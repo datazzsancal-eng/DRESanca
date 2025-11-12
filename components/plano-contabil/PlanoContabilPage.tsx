@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
+import PlanoContabilComparePage from './PlanoContabilComparePage';
 
 // Type definitions
 interface Cliente {
@@ -25,6 +26,8 @@ interface PlanoContabil {
 }
 
 const PlanoContabilPage: React.FC = () => {
+  const [isComparing, setIsComparing] = useState(false);
+  
   // State management
   const [contas, setContas] = useState<PlanoContabil[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -241,6 +244,10 @@ const PlanoContabilPage: React.FC = () => {
       </div>
     );
   };
+  
+  if (isComparing) {
+    return <PlanoContabilComparePage onBack={() => setIsComparing(false)} />;
+  }
 
   return (
     <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md space-y-4">
@@ -264,6 +271,12 @@ const PlanoContabilPage: React.FC = () => {
             <option value="">Selecione a Empresa (CNPJ Raiz)</option>
             {empresasRaiz.map(e => <option key={e.cnpj_raiz} value={e.cnpj_raiz}>{e.reduz_emp} ({e.cnpj_raiz})</option>)}
           </select>
+           <button
+            onClick={() => setIsComparing(true)}
+            className="w-full md:w-auto px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-teal-500 whitespace-nowrap"
+          >
+            Comparar Planos
+          </button>
           <button
             onClick={() => openModal()}
             disabled={!selectedCliente || !selectedCnpjRaiz}

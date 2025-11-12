@@ -1,9 +1,13 @@
 
 
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import Modal from '../shared/Modal';
 
 // Type definitions
+declare const jspdf: any;
+
 interface Cliente { id: string; cli_nome: string | null; }
 interface CnpjRaiz { cnpj_raiz: string; reduz_emp: string | null; }
 interface TipoLinha { id: number; tipo_linha: string | null; }
@@ -32,6 +36,14 @@ interface TemplateLinha {
 }
 interface TemplateLinhaForState extends TemplateLinha {
   _internalKey: string | number;
+}
+interface TemplateViewData {
+  dre_linha_seq: number;
+  dre_linha_descri: string | null;
+  tipo_linha: string | null;
+  dre_linha_valor_descri: string | null;
+  dre_linha_valor_fonte: string | null;
+  dre_linha_visivel: string;
 }
 
 
@@ -203,11 +215,26 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // View Modal State
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [viewData, setViewData] = useState<TemplateViewData[]>([]);
+  const [isViewLoading, setIsViewLoading] = useState(false);
+  const [viewError, setViewError] = useState<string | null>(null);
+  const [showVisibleOnly, setShowVisibleOnly] = useState(false);
 
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
 
   const tiposLinhaMap = useMemo(() => new Map(tiposLinha.map(t => [t.id, t.tipo_linha?.toUpperCase()])), [tiposLinha]);
+
+  const filteredViewData = useMemo(() => {
+    if (showVisibleOnly) {
+        return viewData.filter(row => row.dre_linha_visivel === 'S');
+    }
+    return viewData;
+  }, [viewData, showVisibleOnly]);
+
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -331,6 +358,75 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
     dragOverItem.current = null;
     setLinhasData(newLinhas);
   };
+  
+  const handleViewTemplate = async () => {
+      if (!headerData.dre_cont) {
+        setError("Este template não possui um código de controle para visualização. Salve o template primeiro.");
+        setTimeout(() => setError(null), 4000);
+        return;
+      }
+      setIsViewModalOpen(true);
+      setIsViewLoading(true);
+      setViewError(null);
+      setViewData([]);
+
+      try {
+        const response = await fetch(`https://webhook.moondog-ia.tech/webhook/temp_dre?cntr=${headerData.dre_cont}`);
+        if (!response.ok) {
+          throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
+        }
+        const data: TemplateViewData[] = await response.json();
+        data.sort((a, b) => a.dre_linha_seq - b.dre_linha_seq);
+        setViewData(data);
+      } catch (err: any) {
+        setViewError(`Falha ao carregar visualização: ${err.message}`);
+      } finally {
+        setIsViewLoading(false);
+      }
+    };
+
+    const closeViewModal = () => {
+      setIsViewModalOpen(false);
+      setViewData([]);
+      setViewError(null);
+      setShowVisibleOnly(false);
+    };
+
+    const handleExportPdf = () => {
+        if (!headerData.dre_nome || filteredViewData.length === 0) return;
+
+        const { jsPDF } = jspdf;
+        const doc = new jsPDF();
+
+        const title = `Template: ${headerData.dre_nome}`;
+        doc.text(title, 14, 16);
+
+        const tableColumn = ["SEQ", "Descrição", "Tipo", "Valor / Conta / Fórmula", "Fonte", "Visível"];
+        const tableRows: (string | number)[][] = [];
+
+        filteredViewData.forEach(item => {
+            const rowData = [
+                item.dre_linha_seq,
+                item.dre_linha_descri || '',
+                item.tipo_linha || '',
+                item.dre_linha_valor_descri || '',
+                item.dre_linha_valor_fonte || 'N/A',
+                item.dre_linha_visivel === 'S' ? 'Sim' : 'Não'
+            ];
+            tableRows.push(rowData);
+        });
+
+        doc.autoTable({
+            head: [tableColumn],
+            body: tableRows,
+            startY: 24,
+            theme: 'grid',
+            headStyles: { fillColor: [34, 41, 51] }, // Dark gray header
+            styles: { font: 'Inter', cellPadding: 2, fontSize: 8 },
+        });
+
+        doc.save(`template_${headerData.dre_nome?.toLowerCase().replace(/\s/g, '_')}.pdf`);
+    };
 
   const handleSave = async () => {
     setSaving(true);
@@ -412,6 +508,15 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
     <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-white">{templateId === 'new' ? 'Novo Template de DRE' : 'Editar Template de DRE'}</h2>
+        {templateId !== 'new' && (
+            <button
+                onClick={handleViewTemplate}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-cyan-600 rounded-md hover:bg-cyan-700"
+            >
+                <i className="fas fa-eye mr-2"></i>
+                Visualizar Estrutura
+            </button>
+        )}
       </div>
 
       {error && <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{error}</div>}
@@ -516,6 +621,84 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
 
         <ActionButtons showTopBorder={true} />
       </div>
+
+       <Modal isOpen={isViewModalOpen} onClose={closeViewModal} title={`Visualização: ${headerData?.dre_nome || ''}`} size="screen80">
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+                <div className="flex items-center justify-end">
+                    <label className="flex items-center space-x-2 text-sm font-medium text-gray-300 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={showVisibleOnly}
+                            onChange={(e) => setShowVisibleOnly(e.target.checked)}
+                            className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500"
+                        />
+                        <span>Mostrar apenas linhas visíveis</span>
+                    </label>
+                </div>
+                {isViewLoading && (
+                <div className="flex items-center justify-center p-8">
+                    <div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div>
+                    <span className="ml-4 text-gray-300">Buscando dados...</span>
+                </div>
+                )}
+                {viewError && (
+                <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{viewError}</div>
+                )}
+                {!isViewLoading && !viewError && filteredViewData.length > 0 && (
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm divide-y divide-gray-700">
+                    <thead className="bg-gray-700">
+                        <tr>
+                        <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">SEQ</th>
+                        <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Descrição</th>
+                        <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Tipo</th>
+                        <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Valor / Conta / Fórmula</th>
+                        <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Fonte</th>
+                        <th className="px-3 py-2 text-xs font-semibold tracking-wider text-center text-gray-400">Visível</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-gray-800 divide-y divide-gray-700">
+                        {filteredViewData.map(row => (
+                        <tr key={row.dre_linha_seq}>
+                            <td className="px-3 py-2 text-gray-400">{row.dre_linha_seq}</td>
+                            <td className="px-3 py-2 text-white">{row.dre_linha_descri}</td>
+                            <td className="px-3 py-2 text-gray-300">{row.tipo_linha}</td>
+                            <td className="px-3 py-2 text-gray-300">{row.dre_linha_valor_descri}</td>
+                            <td className="px-3 py-2 text-gray-400">{row.dre_linha_valor_fonte || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center">
+                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${row.dre_linha_visivel === 'S' ? 'bg-green-800 text-green-300' : 'bg-red-800 text-red-300'}`}>
+                                    {row.dre_linha_visivel === 'S' ? 'Sim' : 'Não'}
+                                </span>
+                            </td>
+                        </tr>
+                        ))}
+                    </tbody>
+                    </table>
+                </div>
+                )}
+                {!isViewLoading && !viewError && filteredViewData.length === 0 && (
+                    <div className="p-6 text-center bg-gray-800/50">
+                        <p className="text-gray-400">{showVisibleOnly ? "Nenhuma linha visível encontrada." : "Nenhum dado retornado para este template."}</p>
+                    </div>
+                )}
+            </div>
+            <div className="flex justify-end pt-4 mt-4 border-t border-gray-700 space-x-2">
+                 <button 
+                    type="button" 
+                    onClick={handleExportPdf} 
+                    disabled={filteredViewData.length === 0 || isViewLoading}
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-teal-500 disabled:bg-teal-800 disabled:cursor-not-allowed"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Exportar PDF
+                </button>
+                <button type="button" onClick={closeViewModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">
+                    Fechar
+                </button>
+            </div>
+        </Modal>
     </div>
   );
 };

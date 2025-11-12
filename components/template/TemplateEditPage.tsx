@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -422,7 +423,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
             startY: 24,
             theme: 'grid',
             headStyles: { fillColor: [34, 41, 51] }, // Dark gray header
-            styles: { font: 'Inter', cellPadding: 2, fontSize: 8 },
+            styles: { font: 'Roboto', cellPadding: 2, fontSize: 8 },
         });
 
         doc.save(`template_${headerData.dre_nome?.toLowerCase().replace(/\s/g, '_')}.pdf`);

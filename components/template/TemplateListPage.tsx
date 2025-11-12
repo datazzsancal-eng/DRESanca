@@ -407,7 +407,7 @@ const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onA
         </div>
       </Modal>
 
-        <Modal isOpen={isViewModalOpen} onClose={closeViewModal} title={`Visualização: ${selectedTemplate?.dre_nome || ''}`} size="5xl">
+        <Modal isOpen={isViewModalOpen} onClose={closeViewModal} title={`Visualização: ${selectedTemplate?.dre_nome || ''}`} size="screen80">
             <div className="space-y-4 max-h-[70vh] overflow-y-auto">
                 <div className="flex items-center justify-end">
                     <label className="flex items-center space-x-2 text-sm font-medium text-gray-300 cursor-pointer">

@@ -14,6 +14,7 @@ interface TemplateHeader {
   cliente_id: string | null;
   dre_nome: string | null;
   dre_uso: string | null;
+  dre_cont: string | null;
   dre_ativo_sn: string;
   cliente_cnpj: string | null;
 }
@@ -38,6 +39,7 @@ const initialHeaderState: TemplateHeader = {
   cliente_id: '',
   dre_nome: '',
   dre_uso: '',
+  dre_cont: '',
   dre_ativo_sn: 'S',
   cliente_cnpj: '',
 };
@@ -434,9 +436,13 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
               {cnpjs.map(c => <option key={c.cnpj_raiz} value={c.cnpj_raiz}>{c.reduz_emp} ({c.cnpj_raiz})</option>)}
             </select>
           </div>
-          <div className="lg:col-span-2">
+          <div>
             <label className="block text-sm font-medium text-gray-300">Uso do Template</label>
             <input type="text" name="dre_uso" value={headerData.dre_uso || ''} onChange={handleHeaderChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300">Controle</label>
+            <input type="text" name="dre_cont" value={headerData.dre_cont || ''} onChange={handleHeaderChange} maxLength={10} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
           </div>
           <div className="flex items-end">
             <label className="flex items-center space-x-2 text-sm font-medium text-gray-300">

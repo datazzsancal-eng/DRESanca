@@ -14,6 +14,7 @@ interface Template {
   cliente_id: string | null;
   dre_nome: string | null;
   dre_uso: string | null;
+  dre_cont: string | null;
   dre_ativo_sn: string;
   cliente_cnpj: string | null;
 }
@@ -200,6 +201,7 @@ const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onA
         <table className="min-w-full text-sm divide-y divide-gray-700">
           <thead className="bg-gray-700">
             <tr>
+              <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Controle</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Nome do Template</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Cliente</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-center text-gray-400 uppercase">Ativo</th>
@@ -209,6 +211,7 @@ const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onA
           <tbody className="bg-gray-800 divide-y divide-gray-700">
             {templates.map(template => (
               <tr key={template.id} className="hover:bg-gray-700/50">
+                <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{template.dre_cont}</td>
                 <td className="px-4 py-2 font-medium text-white whitespace-nowrap">{template.dre_nome}</td>
                 <td className="px-4 py-2 text-gray-400 whitespace-nowrap">{template.cliente_id ? clientesMap.get(template.cliente_id) || 'Inválido' : 'N/A'}</td>
                 <td className="px-4 py-2 text-center whitespace-nowrap">

@@ -1,5 +1,5 @@
 {
-  "name": "Financial Dashboard",
+  "name": "DRE View - v0",
   "description": "A web application for viewing consolidated financial statements (DRE) with a dashboard, filtering capabilities, and data export options. This initial version includes a login page and the main dashboard layout.",
   "requestFramePermissions": []
 }

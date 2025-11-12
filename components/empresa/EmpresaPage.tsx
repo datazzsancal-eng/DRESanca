@@ -259,7 +259,7 @@ const EmpresaPage: React.FC = () => {
       {renderContent()}
 
       {/* Add/Edit Modal */}
-      <Modal isOpen={isModalOpen} onClose={closeModal} title={selectedEmpresa ? 'Editar Empresa' : 'Adicionar Empresa'}>
+      <Modal isOpen={isModalOpen} onClose={closeModal} title={selectedEmpresa ? 'Editar Empresa' : 'Adicionar Empresa'} size="3xl">
         <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
             <div>
                 <label htmlFor="cliente_id" className="block text-sm font-medium text-gray-300">Cliente</label>

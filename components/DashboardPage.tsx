@@ -8,6 +8,7 @@ import TemplatePage from './template/TemplatePage';
 import SituacaoPage from './situacao/SituacaoPage';
 import TipoLinhaPage from './tipo-linha/TipoLinhaPage';
 import EstiloLinhaPage from './estilo-linha/EstiloLinhaPage';
+import TipoVisaoPage from './tipo-visao/TipoVisaoPage';
 
 
 // Icons defined as stateless functional components
@@ -69,6 +70,7 @@ const navigationData: NavItem[] = [
       { id: 'situacao', label: 'Situação', icon: () => <></> },
       { id: 'tipo-linha', label: 'Tipo Linha DRE', icon: () => <></> },
       { id: 'estilo-linha', label: 'Estilo Linha DRE', icon: () => <></> },
+      { id: 'tipo-visao', label: 'Tipo Visão DRE', icon: () => <></> },
     ],
   },
   {
@@ -301,6 +303,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     situacao: 'Configurações - Situação',
     'tipo-linha': 'Configurações - Tipo Linha DRE',
     'estilo-linha': 'Configurações - Estilo Linha DRE',
+    'tipo-visao': 'Configurações - Tipo Visão DRE',
     usuarios: 'Administração - Usuários',
     permissoes: 'Administração - Permissões',
   };
@@ -382,6 +385,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
           {activePage === 'situacao' && <SituacaoPage />}
           {activePage === 'tipo-linha' && <TipoLinhaPage />}
           {activePage === 'estilo-linha' && <EstiloLinhaPage />}
+          {activePage === 'tipo-visao' && <TipoVisaoPage />}
           {(activePage === 'visao' || activePage === 'usuarios' || activePage === 'permissoes') && (
              <div className="flex items-center justify-center h-full p-8 text-center bg-gray-800 border border-gray-700 rounded-lg">
                 <div>

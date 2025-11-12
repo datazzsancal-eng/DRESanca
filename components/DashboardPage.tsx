@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import ClientePage from './cliente/ClientePage';
 import GrupoEmpresarialPage from './grupo-empresarial/GrupoEmpresarialPage';
 import EmpresaPage from './empresa/EmpresaPage';
+import PlanoContabilPage from './plano-contabil/PlanoContabilPage';
 import TemplatePage from './template/TemplatePage';
 import SituacaoPage from './situacao/SituacaoPage';
 import TipoLinhaPage from './tipo-linha/TipoLinhaPage';
@@ -58,6 +59,7 @@ const navigationData: NavItem[] = [
       { id: 'cliente', label: 'Cliente', icon: () => <></> },
       { id: 'grupo-empresarial', label: 'Grupo Empresarial', icon: () => <></> },
       { id: 'empresa', label: 'Empresa', icon: () => <></> },
+      { id: 'plano-contabil', label: 'Plano Contábil', icon: () => <></> },
       { id: 'templates', label: 'Templates', icon: () => <></> },
     ],
   },
@@ -299,6 +301,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     cliente: 'Gestão de Clientes',
     'grupo-empresarial': 'Gestão de Grupos Empresariais',
     empresa: 'Gestão de Empresas',
+    'plano-contabil': 'Gestão de Plano Contábil',
     templates: 'Gestão de Templates',
     situacao: 'Configurações - Situação',
     'tipo-linha': 'Configurações - Tipo Linha DRE',
@@ -381,6 +384,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
           {activePage === 'cliente' && <ClientePage />}
           {activePage === 'grupo-empresarial' && <GrupoEmpresarialPage />}
           {activePage === 'empresa' && <EmpresaPage />}
+          {activePage === 'plano-contabil' && <PlanoContabilPage />}
           {activePage === 'templates' && <TemplatePage />}
           {activePage === 'situacao' && <SituacaoPage />}
           {activePage === 'tipo-linha' && <TipoLinhaPage />}

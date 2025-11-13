@@ -38,6 +38,7 @@ const PlanoContabilPage: React.FC = () => {
   // Filter state
   const [selectedCliente, setSelectedCliente] = useState('');
   const [selectedCnpjRaiz, setSelectedCnpjRaiz] = useState('');
+  const [filtroConta, setFiltroConta] = useState('');
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -94,12 +95,19 @@ const PlanoContabilPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('dre_plano_contabil')
         .select('*')
         .eq('cliente_id', selectedCliente)
-        .eq('cnpj_raiz', selectedCnpjRaiz)
-        .order('conta_estru');
+        .eq('cnpj_raiz', selectedCnpjRaiz);
+      
+      if (filtroConta) {
+        query = query.or(`conta_estru.ilike.%${filtroConta}%,conta_descri.ilike.%${filtroConta}%`);
+      }
+
+      query = query.order('conta_estru');
+        
+      const { data, error } = await query;
         
       if (error) throw error;
       setContas(data || []);
@@ -108,10 +116,13 @@ const PlanoContabilPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedCliente, selectedCnpjRaiz]);
+  }, [selectedCliente, selectedCnpjRaiz, filtroConta]);
 
   useEffect(() => {
-    fetchContas();
+    const handler = setTimeout(() => {
+        fetchContas();
+    }, 300); // Debounce search input
+    return () => clearTimeout(handler);
   }, [fetchContas]);
   
   // Modal handlers
@@ -206,7 +217,9 @@ const PlanoContabilPage: React.FC = () => {
       return (
         <div className="p-6 text-center bg-gray-800/50">
           <h2 className="text-lg font-bold text-white">Nenhuma Conta Encontrada</h2>
-          <p className="mt-1 text-gray-400">Não há contas cadastradas para esta empresa. Clique em 'Adicionar Conta' para começar.</p>
+          <p className="mt-1 text-gray-400">
+            {filtroConta ? "Tente ajustar seu filtro." : "Não há contas cadastradas para esta empresa. Clique em 'Adicionar Conta' para começar."}
+          </p>
         </div>
       );
     }
@@ -271,6 +284,13 @@ const PlanoContabilPage: React.FC = () => {
             <option value="">Selecione a Empresa (CNPJ Raiz)</option>
             {empresasRaiz.map(e => <option key={e.cnpj_raiz} value={e.cnpj_raiz}>{e.reduz_emp} ({e.cnpj_raiz})</option>)}
           </select>
+          <input 
+            type="text"
+            placeholder="Buscar por conta/descrição..."
+            value={filtroConta}
+            onChange={(e) => setFiltroConta(e.target.value)}
+            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
            <button
             onClick={() => setIsComparing(true)}
             className="w-full md:w-auto px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-teal-500 whitespace-nowrap"

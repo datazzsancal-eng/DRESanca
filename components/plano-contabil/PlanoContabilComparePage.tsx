@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
 // Type definitions
@@ -40,6 +40,7 @@ const PlanoContabilComparePage: React.FC<PlanoContabilComparePageProps> = ({ onB
   const [comparisonData, setComparisonData] = useState<ComparisonRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filtroEmpresa1, setFiltroEmpresa1] = useState('');
 
   // Initial data fetching for clients
   useEffect(() => {
@@ -138,15 +139,35 @@ const PlanoContabilComparePage: React.FC<PlanoContabilComparePageProps> = ({ onB
     }
   }, [selectedCliente, selectedEmpresa1, selectedEmpresa2]);
 
+  const filteredComparisonData = useMemo(() => {
+    if (!filtroEmpresa1) {
+      return comparisonData;
+    }
+    const lowercasedFilter = filtroEmpresa1.toLowerCase();
+    return comparisonData.filter(row => 
+      (row.conta1 && row.conta1.toLowerCase().includes(lowercasedFilter)) ||
+      (row.descri1 && row.descri1.toLowerCase().includes(lowercasedFilter))
+    );
+  }, [comparisonData, filtroEmpresa1]);
+
+
   const renderContent = () => {
     if (loading) {
       return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando...</span></div>;
     }
-    if (comparisonData.length === 0) {
+    if (comparisonData.length === 0 && !loading) {
       return (
         <div className="p-6 text-center bg-gray-800/50">
           <h2 className="text-lg font-bold text-white">Nenhum dado para exibir</h2>
           <p className="mt-1 text-gray-400">Selecione os filtros e clique em 'Comparar' para ver os resultados.</p>
+        </div>
+      );
+    }
+    if (filteredComparisonData.length === 0 && comparisonData.length > 0) {
+      return (
+        <div className="p-6 text-center bg-gray-800/50">
+            <h2 className="text-lg font-bold text-white">Nenhum Resultado</h2>
+            <p className="mt-1 text-gray-400">Nenhuma conta da Empresa 1 corresponde ao filtro de busca.</p>
         </div>
       );
     }
@@ -163,7 +184,7 @@ const PlanoContabilComparePage: React.FC<PlanoContabilComparePageProps> = ({ onB
             </tr>
           </thead>
           <tbody className="bg-gray-800 divide-y divide-gray-700">
-            {comparisonData.map(row => {
+            {filteredComparisonData.map(row => {
               const missingAccount = !row.conta1 || !row.conta2;
               return (
                 <tr key={row.key} className={`${missingAccount ? 'bg-[#D8BFD8]/20' : ''} hover:bg-gray-700/50`}>
@@ -211,6 +232,17 @@ const PlanoContabilComparePage: React.FC<PlanoContabilComparePageProps> = ({ onB
             <option value="">Selecione...</option>
             {empresasRaiz.map(e => <option key={e.cnpj_raiz} value={e.cnpj_raiz}>{e.reduz_emp} ({e.cnpj_raiz})</option>)}
           </select>
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-xs font-medium text-gray-400">Filtrar Contas (Empresa 1)</label>
+          <input 
+              type="text"
+              placeholder="Buscar por conta ou descrição..."
+              value={filtroEmpresa1}
+              onChange={(e) => setFiltroEmpresa1(e.target.value)}
+              disabled={!selectedEmpresa1}
+              className="w-full px-3 py-1.5 mt-1 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600"
+          />
         </div>
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-medium text-gray-400">Empresa 2</label>

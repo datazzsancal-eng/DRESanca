@@ -287,16 +287,34 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
     }
   };
 
+  const ActionButtons = ({ showTopBorder = false }: { showTopBorder?: boolean }) => (
+    <div className={`flex justify-between items-center ${showTopBorder ? 'pt-4 mt-4 border-t border-gray-700' : ''}`}>
+      <button
+        onClick={onBack}
+        disabled={saving}
+        className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500 disabled:opacity-50"
+      >
+        Voltar
+      </button>
+      <button
+        onClick={handleSave}
+        disabled={saving || loading || !headerData.cliente_id || !headerData.tipo_visao_id}
+        className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-wait"
+      >
+        {saving ? 'Salvando...' : 'Salvar Visão'}
+      </button>
+    </div>
+  );
+
   if (loading) return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando...</span></div>;
 
   return (
     <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-white">{visaoId === 'new' ? 'Nova Visão' : 'Editar Visão'}</h2>
-        <button onClick={onBack} disabled={saving} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500 disabled:opacity-50">
-          Voltar
-        </button>
       </div>
+
+      <ActionButtons />
       
       {error && (
         <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md whitespace-pre-wrap">
@@ -388,12 +406,7 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
         </div>
       )}
 
-      {/* Save Button */}
-      <div className="flex justify-end pt-4 mt-4 border-t border-gray-700">
-        <button onClick={handleSave} disabled={saving || loading || !headerData.cliente_id || !headerData.tipo_visao_id} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-wait">
-          {saving ? 'Salvando...' : 'Salvar Visão'}
-        </button>
-      </div>
+      <ActionButtons showTopBorder={true} />
     </div>
   );
 };

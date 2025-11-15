@@ -142,25 +142,77 @@ const EmpresaPage: React.FC = () => {
     e.preventDefault();
     
     const payload = { ...formData };
+    let requestError;
 
-    let error;
     if (selectedEmpresa) {
       const { error: updateError } = await supabase.from('dre_empresa').update(payload).eq('id', selectedEmpresa.id);
-      error = updateError;
+      requestError = updateError;
     } else {
-      const { error: insertError } = await supabase.from('dre_empresa').insert(payload);
-      error = insertError;
+      const { data: newEmpresa, error: insertError } = await supabase
+        .from('dre_empresa')
+        .insert(payload)
+        .select()
+        .single();
+      
+      if (insertError) {
+        requestError = insertError;
+      } else if (newEmpresa) {
+        // Auto-associate the new company with relevant visions
+        try {
+          const { data: tiposVisao, error: tiposError } = await supabase
+            .from('tab_tipo_visao')
+            .select('id, tpvis_nome')
+            .in('tpvis_nome', ['CLIENTE', 'CNPJ RAIZ', 'GRUPO']);
+          
+          if (tiposError) throw tiposError;
+
+          const tipoMap = new Map(tiposVisao.map(t => [t.tpvis_nome, t.id]));
+          const visionIds = new Set<string>();
+
+          // Find CLIENTE visions
+          const tipoClienteId = tipoMap.get('CLIENTE');
+          if (tipoClienteId && newEmpresa.cliente_id) {
+            const { data } = await supabase.from('dre_visao').select('id').eq('cliente_id', newEmpresa.cliente_id).eq('tipo_visao_id', tipoClienteId);
+            if (data) data.forEach(v => visionIds.add(v.id));
+          }
+
+          // Find CNPJ RAIZ visions
+          const tipoCnpjRaizId = tipoMap.get('CNPJ RAIZ');
+          if (tipoCnpjRaizId && newEmpresa.emp_cnpj_raiz) {
+            const { data } = await supabase.from('dre_visao').select('id').eq('cnpj_raiz', newEmpresa.emp_cnpj_raiz).eq('tipo_visao_id', tipoCnpjRaizId);
+            if (data) data.forEach(v => visionIds.add(v.id));
+          }
+          
+          // Find GRUPO visions
+          if (newEmpresa.emp_cnpj_raiz) {
+            const { data } = await supabase.from('dre_visao_grupo_cnpj').select('visao_id').eq('cnpj_raiz', newEmpresa.emp_cnpj_raiz);
+            if (data) data.forEach(v => visionIds.add(v.visao_id));
+          }
+
+          // Insert all new relations
+          if (visionIds.size > 0) {
+            const relationsPayload = Array.from(visionIds).map(vid => ({
+              visao_id: vid,
+              empresa_id: newEmpresa.id,
+              rel_vis_emp_atv_sn: 'S'
+            }));
+            const { error: relError } = await supabase.from('rel_visao_empresa').insert(relationsPayload);
+            if (relError) console.warn('Falha na associação automática:', relError.message);
+          }
+        } catch (assocError: any) {
+          console.warn('Erro durante a associação automática da empresa:', assocError.message);
+        }
+      }
     }
 
-    if (error) {
-      setError(`Falha ao salvar empresa: ${error.message}`);
+    if (requestError) {
+      setError(`Falha ao salvar empresa: ${requestError.message}`);
     } else {
-      fetchData(); // Always refetch
+      fetchData();
       if (keepOpen) {
-          // Reset form but keep the client
           const currentCliente = formData.cliente_id;
           setFormData({ ...initialFormData, cliente_id: currentCliente });
-          setSelectedEmpresa(null); // Ensure we are in "create" mode
+          setSelectedEmpresa(null);
       } else {
         closeModal();
       }

@@ -4,7 +4,7 @@ import Shuttle from '../shared/Shuttle';
 
 // Type definitions
 interface Cliente { id: string; cli_nome: string; }
-interface Empresa { id: string; emp_nome: string; emp_cnpj_raiz: string; emp_nome_reduz: string | null; emp_nome_cmpl: string | null; }
+interface Empresa { id: string; emp_nome: string; emp_cnpj_raiz: string; emp_nome_reduz: string | null; emp_nome_cmpl: string | null; emp_cnpj: string | null; }
 interface TipoVisao { id: number; tpvis_nome: string; }
 interface VisaoHeader {
   id?: string;
@@ -102,7 +102,7 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
       }
       setLoading(true);
       try {
-        const { data, error } = await supabase.from('dre_empresa').select('id, emp_nome, emp_cnpj_raiz, emp_nome_reduz, emp_nome_cmpl').eq('cliente_id', headerData.cliente_id);
+        const { data, error } = await supabase.from('dre_empresa').select('id, emp_nome, emp_cnpj_raiz, emp_nome_reduz, emp_nome_cmpl, emp_cnpj').eq('cliente_id', headerData.cliente_id);
         if (error) throw error;
         setEmpresasDoCliente(data || []);
       } catch (err: any) {
@@ -116,7 +116,11 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
 
   // Auto-select companies based on vision type
   useEffect(() => {
-    if (tipoVisaoAtual === 'CUSTOMIZADO' || !empresasDoCliente.length) return;
+    if (visaoId !== 'new') return; // Only run auto-selection for new visions
+    if (tipoVisaoAtual === 'CUSTOMIZADO' || !empresasDoCliente.length) {
+      if (tipoVisaoAtual !== 'CUSTOMIZADO') setSelectedEmpresas(new Set());
+      return;
+    }
     
     let newSelectedIds = new Set<string>();
 
@@ -129,7 +133,7 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
     }
     
     setSelectedEmpresas(newSelectedIds);
-  }, [tipoVisaoAtual, headerData.cnpj_raiz, selectedGrupoCnpjs, empresasDoCliente]);
+  }, [tipoVisaoAtual, headerData.cnpj_raiz, selectedGrupoCnpjs, empresasDoCliente, visaoId]);
 
   const handleHeaderChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -267,31 +271,36 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
         currentVisaoId = data.id;
       } else {
         // Only update fields that are allowed to change
-        const updatePayload = {
+        const updatePayload: Partial<VisaoHeader> = {
             vis_nome: headerData.vis_nome,
             vis_descri: headerData.vis_descri,
             vis_ativo_sn: headerData.vis_ativo_sn,
-            cnpj_raiz: headerData.cnpj_raiz // This is needed if it was set on creation
         };
+        // Do not allow changing these fields on edit
+        if(tipoVisaoAtual === 'CNPJ RAIZ') updatePayload.cnpj_raiz = headerData.cnpj_raiz;
+        
         const { error } = await supabase.from('dre_visao').update(updatePayload).eq('id', currentVisaoId);
         if (error) throw error;
       }
 
       if (!currentVisaoId) throw new Error("ID da visão não encontrado.");
 
-      await supabase.from('rel_visao_empresa').delete().eq('visao_id', currentVisaoId);
-      await supabase.from('dre_visao_grupo_cnpj').delete().eq('visao_id', currentVisaoId);
-      
-      if (tipoVisaoAtual === 'GRUPO' && selectedGrupoCnpjs.size > 0) {
-        const grupoPayload = Array.from(selectedGrupoCnpjs).map(cnpj => ({ visao_id: currentVisaoId, cliente_id: headerData.cliente_id, cnpj_raiz: cnpj }));
-        const { error } = await supabase.from('dre_visao_grupo_cnpj').insert(grupoPayload);
-        if (error) throw error;
-      }
+      // These should only be modified for NEW visions, or custom visions.
+      if (visaoId === 'new' || tipoVisaoAtual === 'CUSTOMIZADO' || tipoVisaoAtual === 'GRUPO') {
+        await supabase.from('rel_visao_empresa').delete().eq('visao_id', currentVisaoId);
+        await supabase.from('dre_visao_grupo_cnpj').delete().eq('visao_id', currentVisaoId);
+        
+        if (tipoVisaoAtual === 'GRUPO' && selectedGrupoCnpjs.size > 0) {
+            const grupoPayload = Array.from(selectedGrupoCnpjs).map(cnpj => ({ visao_id: currentVisaoId, cliente_id: headerData.cliente_id, cnpj_raiz: cnpj }));
+            const { error } = await supabase.from('dre_visao_grupo_cnpj').insert(grupoPayload);
+            if (error) throw error;
+        }
 
-      if (selectedEmpresas.size > 0) {
-        const relPayload = Array.from(selectedEmpresas).map(empId => ({ visao_id: currentVisaoId, empresa_id: empId, rel_vis_emp_atv_sn: 'S' }));
-        const { error } = await supabase.from('rel_visao_empresa').insert(relPayload);
-        if (error) throw error;
+        if (selectedEmpresas.size > 0) {
+            const relPayload = Array.from(selectedEmpresas).map(empId => ({ visao_id: currentVisaoId, empresa_id: empId, rel_vis_emp_atv_sn: 'S' }));
+            const { error } = await supabase.from('rel_visao_empresa').insert(relPayload);
+            if (error) throw error;
+        }
       }
 
       onBack();
@@ -404,7 +413,11 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
                 <div className="mt-4">
                     <label className="block mb-2 text-sm font-medium text-gray-300">Empresas da Visão</label>
                     <Shuttle
-                        items={empresasDoCliente.map(e => ({ id: e.id, label: `${e.emp_nome} (${e.emp_nome_cmpl || e.emp_nome_reduz || 'N/A'})` }))}
+                        items={empresasDoCliente.map(e => {
+                            const labelParts = [e.emp_nome_reduz, e.emp_nome_cmpl].filter(Boolean).join(' ');
+                            const label = `${labelParts || e.emp_nome} (${e.emp_cnpj || 'N/A'})`;
+                            return { id: e.id, label };
+                        })}
                         selectedIds={selectedEmpresas}
                         onChange={setSelectedEmpresas}
                         height="350px"
@@ -423,17 +436,21 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
                                 {empresasDoCliente
                                     .filter(e => selectedEmpresas.has(e.id))
                                     .sort((a, b) => (a.emp_nome || '').localeCompare(b.emp_nome || ''))
-                                    .map(empresa => (
-                                        <li key={empresa.id} className="px-3 py-1.5 text-sm text-gray-300 rounded">
-                                            {empresa.emp_nome} ({empresa.emp_nome_cmpl || empresa.emp_nome_reduz || 'N/A'})
-                                        </li>
-                                    ))
+                                    .map(empresa => {
+                                        const labelParts = [empresa.emp_nome_reduz, empresa.emp_nome_cmpl].filter(Boolean).join(' ');
+                                        const label = `${labelParts || empresa.emp_nome} (${empresa.emp_cnpj || 'N/A'})`;
+                                        return (
+                                            <li key={empresa.id} className="px-3 py-1.5 text-sm text-gray-300 rounded truncate" title={label}>
+                                                {label}
+                                            </li>
+                                        )
+                                    })
                                 }
                             </ul>
                         </div>
                     ) : (
                         <div className="p-4 text-center text-gray-400 bg-gray-800 rounded-md">
-                            {tipoVisaoAtual === 'CLIENTE'
+                            {tipoVisaoAtual === 'CLIENTE' && empresasDoCliente.length > 0
                                 ? `Todas as ${empresasDoCliente.length} empresas do cliente serão incluídas.`
                                 : 'Nenhuma empresa associada com a seleção atual.'}
                         </div>

@@ -34,6 +34,7 @@ const PlanoContabilPage: React.FC = () => {
   const [empresasRaiz, setEmpresasRaiz] = useState<EmpresaRaiz[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [totalContas, setTotalContas] = useState<number | null>(null);
 
   // Filter state
   const [selectedCliente, setSelectedCliente] = useState('');
@@ -68,6 +69,7 @@ const PlanoContabilPage: React.FC = () => {
         setEmpresasRaiz([]);
         setSelectedCnpjRaiz('');
         setContas([]);
+        setTotalContas(null);
         return;
       }
       setLoading(true);
@@ -81,10 +83,37 @@ const PlanoContabilPage: React.FC = () => {
       }
       setSelectedCnpjRaiz('');
       setContas([]);
+      setTotalContas(null);
       setLoading(false);
     };
     fetchEmpresasRaiz();
   }, [selectedCliente]);
+
+  // Fetch total count when client/cnpj changes
+  useEffect(() => {
+    const getTotalCount = async () => {
+      if (!selectedCliente || !selectedCnpjRaiz) {
+        setTotalContas(null);
+        return;
+      }
+      try {
+        const { count, error } = await supabase
+          .from('dre_plano_contabil')
+          .select('*', { count: 'exact', head: true })
+          .eq('cliente_id', selectedCliente)
+          .eq('cnpj_raiz', selectedCnpjRaiz);
+        
+        if (error) throw error;
+        setTotalContas(count || 0);
+      } catch (err: any) {
+        console.error(`Falha ao obter contagem total: ${err.message}`);
+        setTotalContas(0); // Fallback to 0 on error
+      }
+    };
+    
+    getTotalCount();
+  }, [selectedCliente, selectedCnpjRaiz]);
+
 
   // Fetch chart of accounts when client and CNPJ root are selected
   const fetchContas = useCallback(async () => {
@@ -95,22 +124,42 @@ const PlanoContabilPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      let query = supabase
-        .from('dre_plano_contabil')
-        .select('*')
-        .eq('cliente_id', selectedCliente)
-        .eq('cnpj_raiz', selectedCnpjRaiz);
-      
-      if (filtroConta) {
-        query = query.or(`conta_estru.ilike.%${filtroConta}%,conta_descri.ilike.%${filtroConta}%`);
-      }
+      const PAGE_SIZE = 1000;
+      let allContas: PlanoContabil[] = [];
+      let page = 0;
+      let hasMore = true;
 
-      query = query.order('conta_estru');
+      while(hasMore) {
+        const from = page * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+
+        let query = supabase
+          .from('dre_plano_contabil')
+          .select('*')
+          .eq('cliente_id', selectedCliente)
+          .eq('cnpj_raiz', selectedCnpjRaiz);
         
-      const { data, error } = await query;
+        if (filtroConta) {
+          query = query.or(`conta_estru.ilike.%${filtroConta}%,conta_descri.ilike.%${filtroConta}%`);
+        }
+
+        query = query.order('conta_estru').range(from, to);
+          
+        const { data, error } = await query;
+          
+        if (error) throw error;
         
-      if (error) throw error;
-      setContas(data || []);
+        if (data) {
+          allContas.push(...data);
+        }
+
+        if (!data || data.length < PAGE_SIZE) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+      }
+      setContas(allContas);
     } catch (err: any) {
       setError(`Falha ao carregar plano de contas: ${err.message}`);
     } finally {
@@ -156,6 +205,12 @@ const PlanoContabilPage: React.FC = () => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
+  
+  const handleCnpjRaizChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setTotalContas(null); // Reset count immediately on change for a better UX
+    setSelectedCnpjRaiz(e.target.value);
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -277,7 +332,7 @@ const PlanoContabilPage: React.FC = () => {
           </select>
           <select 
             value={selectedCnpjRaiz} 
-            onChange={(e) => setSelectedCnpjRaiz(e.target.value)} 
+            onChange={handleCnpjRaizChange} 
             disabled={!selectedCliente || empresasRaiz.length === 0}
             className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
           >
@@ -308,6 +363,15 @@ const PlanoContabilPage: React.FC = () => {
       </div>
 
       {error && <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{error}</div>}
+      
+      {/* Record Count Display */}
+      {selectedCliente && selectedCnpjRaiz && !loading && totalContas !== null && (
+        <div className="text-sm text-gray-400">
+          <span>
+            {contas.length.toLocaleString('pt-BR')} de {totalContas.toLocaleString('pt-BR')} registros
+          </span>
+        </div>
+      )}
 
       {renderContent()}
 

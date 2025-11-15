@@ -220,6 +220,7 @@ const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onA
       // 3. Create new header
       const { id, created_at, ...newHeaderData } = sourceHeader;
       newHeaderData.dre_nome = newTemplateName;
+      newHeaderData.dre_cont = null; // Set the control field to null to avoid unique constraint violation
 
       const { data: insertedHeader, error: insertHeaderError } = await supabase
         .from('dre_template')

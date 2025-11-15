@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -62,149 +58,6 @@ interface TemplateEditPageProps {
   onBack: () => void;
 }
 
-// Searchable Account Select Component
-interface SearchableAccountSelectProps {
-    accounts: PlanoConta[];
-    selectedValue: string | null;
-    onChange: (value: string) => void;
-    disabled?: boolean;
-    placeholder?: string;
-}
-
-const SearchableAccountSelect: React.FC<SearchableAccountSelectProps> = ({ accounts, selectedValue, onChange, disabled, placeholder }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
-    const wrapperRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    const selectedAccount = useMemo(() => accounts.find(acc => acc.conta_estru === selectedValue), [accounts, selectedValue]);
-
-    const filteredAccounts = useMemo(() => {
-        if (!searchTerm) return accounts;
-        const lowercasedFilter = searchTerm.toLowerCase();
-        return accounts.filter(account =>
-            account.conta_estru.toLowerCase().includes(lowercasedFilter) ||
-            account.conta_descri?.toLowerCase().includes(lowercasedFilter)
-        );
-    }, [accounts, searchTerm]);
-
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [wrapperRef]);
-
-    useEffect(() => {
-        if (isOpen) {
-            setTimeout(() => inputRef.current?.focus(), 100);
-        }
-    }, [isOpen]);
-
-    const handleSelect = (account: PlanoConta) => {
-        onChange(account.conta_estru);
-        setIsOpen(false);
-        setSearchTerm('');
-    };
-
-    const displayValue = selectedAccount
-        ? `${selectedAccount.conta_estru} - ${selectedAccount.conta_descri}`
-        : placeholder || 'Selecione uma conta';
-
-    return (
-        <div className="relative w-full" ref={wrapperRef}>
-            <button
-                type="button"
-                onClick={() => !disabled && setIsOpen(!isOpen)}
-                disabled={disabled}
-                className="w-full px-2 py-1 text-left text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-            >
-                <span className="truncate">{displayValue}</span>
-            </button>
-            {isOpen && (
-                <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-md shadow-lg max-h-60">
-                    <div className="p-2">
-                        <input
-                            ref={inputRef}
-                            type="text"
-                            placeholder="Buscar conta..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full px-2 py-1 text-white bg-gray-800 border border-gray-600 rounded-md"
-                        />
-                    </div>
-                    <ul className="overflow-y-auto max-h-48">
-                        {filteredAccounts.length > 0 ? (
-                            filteredAccounts.map(account => (
-                                <li
-                                    key={account.conta_estru}
-                                    onClick={() => handleSelect(account)}
-                                    className="px-3 py-2 cursor-pointer hover:bg-indigo-600"
-                                >
-                                    {account.conta_estru} - {account.conta_descri}
-                                </li>
-                            ))
-                        ) : (
-                            <li className="px-3 py-2 text-gray-400">Nenhuma conta encontrada</li>
-                        )}
-                    </ul>
-                </div>
-            )}
-        </div>
-    );
-};
-
-// ValorCell component renders the correct input for the "Valor" column
-interface ValorCellProps {
-  linha: TemplateLinha;
-  index: number;
-  tiposLinhaMap: Map<number, string | undefined>;
-  headerData: TemplateHeader;
-  planoContas: PlanoConta[];
-  onLinhaChange: (index: number, field: keyof TemplateLinha, value: any) => void;
-}
-
-const ValorCell: React.FC<ValorCellProps> = ({ linha, index, tiposLinhaMap, headerData, planoContas, onLinhaChange }) => {
-    const tipo = tiposLinhaMap.get(linha.tipo_linha_id as number);
-
-    const renderContaSelect = () => (
-      <SearchableAccountSelect
-        accounts={planoContas}
-        selectedValue={linha.dre_linha_valor || null}
-        onChange={(value) => onLinhaChange(index, 'dre_linha_valor', value)}
-        disabled={!headerData.cliente_cnpj || planoContas.length === 0}
-        placeholder={planoContas.length > 0 ? 'Busque uma conta' : 'Nenhuma conta'}
-      />
-    );
-    
-    const renderFormulaInput = () => (
-      <input type="text" value={linha.dre_linha_valor || ''} onChange={(e) => onLinhaChange(index, 'dre_linha_valor', e.target.value.toUpperCase())} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ex: L1-L2"/>
-    );
-
-    switch (tipo) {
-      case 'TITULO': case 'SEPARADOR':
-        return <input type="text" value="N/A" disabled className="w-full px-2 py-1 text-gray-400 bg-gray-600 border-gray-500 rounded-md cursor-not-allowed" />;
-      case 'CONTA':
-        return renderContaSelect();
-      case 'FORMULA':
-        return renderFormulaInput();
-      case 'CONSTANTE':
-        const fonte = linha.dre_linha_valor_fonte || 'VALOR';
-        switch (fonte) {
-            case 'CONTA': return renderContaSelect();
-            case 'FORMULA': return renderFormulaInput();
-            case 'VALOR': default:
-                return <input type="number" step="0.01" value={linha.dre_linha_valor || ''} onChange={(e) => onLinhaChange(index, 'dre_linha_valor', e.target.value)} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />;
-        }
-      default:
-        return <input type="text" value={linha.dre_linha_valor || ''} disabled className="w-full px-2 py-1 text-gray-400 bg-gray-600 border border-gray-500 rounded-md cursor-not-allowed" />;
-    }
-};
-
-
 const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack }) => {
   const [headerData, setHeaderData] = useState<TemplateHeader>(initialHeaderState);
   const [linhasData, setLinhasData] = useState<TemplateLinhaForState[]>([]);
@@ -224,10 +77,21 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   const [viewError, setViewError] = useState<string | null>(null);
   const [showVisibleOnly, setShowVisibleOnly] = useState(false);
 
+  // Account Search Modal State
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [accountSearchQuery, setAccountSearchQuery] = useState('');
+  const [accountSearchResults, setAccountSearchResults] = useState<PlanoConta[]>([]);
+  const [isSearchingAccounts, setIsSearchingAccounts] = useState(false);
+  const [editingLinhaIndex, setEditingLinhaIndex] = useState<number | null>(null);
+
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
 
   const tiposLinhaMap = useMemo(() => new Map(tiposLinha.map(t => [t.id, t.tipo_linha?.toUpperCase()])), [tiposLinha]);
+  
+  const planoContasMap = useMemo(() => {
+    return new Map(planoContas.map(acc => [acc.conta_estru, acc.conta_descri]));
+  }, [planoContas]);
 
   const filteredViewData = useMemo(() => {
     if (showVisibleOnly) {
@@ -284,22 +148,81 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   }, [headerData.cliente_id]);
   
   useEffect(() => {
-    const fetchPlanoContas = async () => {
-        if (!headerData.cliente_cnpj) { setPlanoContas([]); return; }
-        const { data, error } = await supabase.from('dre_plano_contabil').select('conta_estru, conta_descri').eq('cnpj_raiz', headerData.cliente_cnpj).order('conta_estru');
-        if (error) setError(`Falha ao carregar plano de contas: ${error.message}`); else setPlanoContas(data || []);
+    // This effect pre-fetches a portion of the accounts for quick display of descriptions.
+    const fetchInitialPlanoContas = async () => {
+        if (!headerData.cliente_cnpj) {
+            setPlanoContas([]);
+            return;
+        }
+        try {
+            const { data, error } = await supabase
+                .from('dre_plano_contabil')
+                .select('conta_estru, conta_descri')
+                .eq('cnpj_raiz', headerData.cliente_cnpj)
+                .limit(5000) // Fetch a reasonable number for initial description mapping
+                .order('conta_estru');
+
+            if (error) throw error;
+            setPlanoContas(data || []);
+        } catch (err: any) {
+            setError(`Falha ao carregar plano de contas: ${err.message}`);
+            setPlanoContas([]);
+        }
     };
-    fetchPlanoContas();
+    fetchInitialPlanoContas();
   }, [headerData.cliente_cnpj]);
+
+  // Debounced search for accounts in the modal
+  useEffect(() => {
+      if (!isAccountModalOpen || !accountSearchQuery || !headerData.cliente_cnpj) {
+          setAccountSearchResults([]);
+          return;
+      }
+
+      const handler = setTimeout(async () => {
+          setIsSearchingAccounts(true);
+          try {
+              const { data, error } = await supabase
+                  .from('dre_plano_contabil')
+                  .select('conta_estru, conta_descri')
+                  .eq('cnpj_raiz', headerData.cliente_cnpj)
+                  .or(`conta_estru.ilike.%${accountSearchQuery}%,conta_descri.ilike.%${accountSearchQuery}%`)
+                  .limit(100)
+                  .order('conta_estru');
+              if (error) throw error;
+              setAccountSearchResults(data || []);
+          } catch (err: any) {
+              // Silently fail in modal, or show a small error message
+              console.error("Account search error:", err);
+              setAccountSearchResults([]);
+          } finally {
+              setIsSearchingAccounts(false);
+          }
+      }, 300); // 300ms debounce
+
+      return () => clearTimeout(handler);
+  }, [accountSearchQuery, isAccountModalOpen, headerData.cliente_cnpj]);
+
 
   const handleHeaderChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
+
     if (type === 'checkbox') {
-      setHeaderData(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked ? 'S' : 'N' }));
+        setHeaderData(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked ? 'S' : 'N' }));
     } else {
-      setHeaderData(prev => ({ ...prev, [name]: value.toUpperCase() }));
+        const upperValue = name !== 'cliente_cnpj' ? value.toUpperCase() : value;
+        if (name === 'cliente_id') {
+            setHeaderData(prev => ({
+                ...prev,
+                cliente_id: upperValue,
+                cliente_cnpj: '', 
+            }));
+        } else {
+            setHeaderData(prev => ({ ...prev, [name]: upperValue }));
+        }
     }
   };
+
 
   const handleLinhaChange = (index: number, field: keyof TemplateLinha, value: any) => {
     setLinhasData(currentLinhas => {
@@ -308,17 +231,16 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
         (linhaToUpdate as any)[field] = value;
 
         if (field === 'tipo_linha_id') {
-            linhaToUpdate.dre_linha_valor = ''; // Always clear value on type change
+            linhaToUpdate.dre_linha_valor = ''; 
             const newTipo = tiposLinhaMap.get(Number(value));
             
             if (newTipo === 'CONSTANTE') {
               linhaToUpdate.dre_linha_valor_fonte = 'VALOR';
               linhaToUpdate.estilo_linha_id = null;
-              linhaToUpdate.dre_linha_visivel = 'N'; // Set invisible for CONSTANTE
+              linhaToUpdate.dre_linha_visivel = 'N'; 
             } else {
-              // Reset for other types
               linhaToUpdate.dre_linha_valor_fonte = null;
-              linhaToUpdate.dre_linha_visivel = 'S'; // Set visible for others
+              linhaToUpdate.dre_linha_visivel = 'S'; 
             }
         }
         
@@ -349,6 +271,22 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   const removeLinha = (key: string | number) => {
     setLinhasData(prev => prev.filter(l => l._internalKey !== key));
   };
+  
+  const openAccountSearchModal = (index: number) => {
+    setEditingLinhaIndex(index);
+    setAccountSearchQuery('');
+    setAccountSearchResults([]);
+    setIsAccountModalOpen(true);
+  };
+
+  const selectAccount = (conta: PlanoConta) => {
+    if (editingLinhaIndex !== null) {
+        handleLinhaChange(editingLinhaIndex, 'dre_linha_valor', conta.conta_estru);
+    }
+    setIsAccountModalOpen(false);
+    setEditingLinhaIndex(null);
+  };
+
 
   const handleDragSort = () => {
     if (dragItem.current === null || dragOverItem.current === null) return;
@@ -501,6 +439,58 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
       </div>
     </div>
   );
+  
+  const renderValorCell = (linha: TemplateLinhaForState, index: number) => {
+    const tipo = tiposLinhaMap.get(linha.tipo_linha_id as number);
+    const isDisabled = !headerData.cliente_cnpj;
+
+    const renderContaInput = () => {
+      const descri = planoContasMap.get(linha.dre_linha_valor || '');
+      const displayValue = descri ? `${linha.dre_linha_valor} - ${descri}` : (linha.dre_linha_valor || '');
+      return (
+        <div className="flex items-center w-full">
+            <input 
+                type="text" 
+                value={displayValue} 
+                disabled 
+                className="w-full px-2 py-1 text-gray-300 bg-gray-600 border-gray-500 rounded-l-md" 
+                placeholder="Nenhuma conta selecionada"
+            />
+            <button 
+                type="button" 
+                onClick={() => openAccountSearchModal(index)} 
+                disabled={isDisabled}
+                className="px-3 py-1 text-white bg-indigo-600 rounded-r-md hover:bg-indigo-700 disabled:bg-indigo-800 disabled:cursor-not-allowed"
+            >
+                <i className="fas fa-search"></i>
+            </button>
+        </div>
+      );
+    };
+
+    const renderFormulaInput = () => (
+      <input type="text" value={linha.dre_linha_valor || ''} onChange={(e) => handleLinhaChange(index, 'dre_linha_valor', e.target.value.toUpperCase())} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ex: L1-L2"/>
+    );
+
+    switch (tipo) {
+      case 'TITULO': case 'SEPARADOR':
+        return <input type="text" value="N/A" disabled className="w-full px-2 py-1 text-gray-400 bg-gray-600 border-gray-500 rounded-md cursor-not-allowed" />;
+      case 'CONTA':
+        return renderContaInput();
+      case 'FORMULA':
+        return renderFormulaInput();
+      case 'CONSTANTE':
+        const fonte = linha.dre_linha_valor_fonte || 'VALOR';
+        switch (fonte) {
+            case 'CONTA': return renderContaInput();
+            case 'FORMULA': return renderFormulaInput();
+            case 'VALOR': default:
+                return <input type="number" step="0.01" value={linha.dre_linha_valor || ''} onChange={(e) => handleLinhaChange(index, 'dre_linha_valor', e.target.value)} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />;
+        }
+      default:
+        return <input type="text" value={linha.dre_linha_valor || ''} disabled className="w-full px-2 py-1 text-gray-400 bg-gray-600 border-gray-500 rounded-md cursor-not-allowed" />;
+    }
+  };
 
 
   if (loading) return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando...</span></div>;
@@ -586,7 +576,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                   <tr key={linha._internalKey} draggable onDragStart={() => dragItem.current = index} onDragEnter={() => dragOverItem.current = index} onDragEnd={handleDragSort} onDragOver={(e) => e.preventDefault()} className="hover:bg-gray-700/50 cursor-move">
                     <td className="px-2 py-1 text-center text-gray-500">☰</td>
                     <td className="px-2 py-1 text-gray-400">{index + 1}</td>
-                    <td className="px-1 py-1"><input type="text" value={linha.dre_linha_descri || ''} onChange={(e) => handleLinhaChange(index, 'dre_linha_descri', e.target.value)} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md"/></td>
+                    <td className="px-1 py-1"><input type="text" value={linha.dre_linha_descri || ''} onChange={(e) => handleLinhaChange(index, 'dre_linha_descri', e.target.value.toUpperCase())} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md"/></td>
                     <td className="px-1 py-1"><input type="number" value={linha.dre_linha_nivel || 0} onChange={(e) => handleLinhaChange(index, 'dre_linha_nivel', parseInt(e.target.value, 10))} className="w-16 px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md"/></td>
                     <td className="px-1 py-1">
                       <select value={linha.tipo_linha_id || ''} onChange={(e) => handleLinhaChange(index, 'tipo_linha_id', parseInt(e.target.value, 10))} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md">
@@ -603,16 +593,16 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                         </select>
                       ) : (
                         <select value={linha.estilo_linha_id || ''} onChange={(e) => handleLinhaChange(index, 'estilo_linha_id', parseInt(e.target.value, 10))} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md">
-                            <option value="" disabled>Selecione</option>
+                            <option value="">Nenhum</option>
                             {estilosLinha.map(e => <option key={e.id} value={e.id}>{e.estilo_nome}</option>)}
                         </select>
                       )}
                     </td>
                     <td className="px-1 py-1">
-                      <ValorCell linha={linha} index={index} tiposLinhaMap={tiposLinhaMap} headerData={headerData} planoContas={planoContas} onLinhaChange={handleLinhaChange} />
+                      {renderValorCell(linha, index)}
                     </td>
                     <td className="px-2 py-1 text-center"><input type="checkbox" checked={linha.dre_linha_visivel === 'S'} onChange={(e) => handleLinhaChange(index, 'dre_linha_visivel', e.target.checked ? 'S' : 'N')} className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500" /></td>
-                    <td className="px-2 py-1 text-center"><button onClick={() => removeLinha(linha._internalKey)} className="text-red-500 hover:text-red-400">X</button></td>
+                    <td className="px-2 py-1 text-center"><button onClick={() => removeLinha(linha._internalKey)} className="text-red-500 hover:text-red-400"><i className="fas fa-times"></i></button></td>
                   </tr>
                 )
               })}
@@ -622,6 +612,41 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
 
         <ActionButtons showTopBorder={true} />
       </div>
+
+      <Modal isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} title="Buscar Conta Contábil" size="2xl">
+        <div className="space-y-4">
+            <input 
+                type="text"
+                value={accountSearchQuery}
+                onChange={(e) => setAccountSearchQuery(e.target.value)}
+                placeholder="Digite o código ou a descrição da conta..."
+                className="w-full px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                autoFocus
+            />
+            <div className="max-h-80 overflow-y-auto">
+                {isSearchingAccounts ? (
+                     <div className="flex items-center justify-center p-4"><div className="w-6 h-6 border-2 border-t-transparent border-indigo-400 rounded-full animate-spin"></div></div>
+                ) : accountSearchResults.length > 0 ? (
+                    <ul className="divide-y divide-gray-700">
+                        {accountSearchResults.map(conta => (
+                            <li 
+                                key={conta.conta_estru} 
+                                onClick={() => selectAccount(conta)}
+                                className="p-2 cursor-pointer hover:bg-indigo-600 rounded-md"
+                            >
+                                <div className="font-semibold text-white">{conta.conta_estru}</div>
+                                <div className="text-sm text-gray-300">{conta.conta_descri}</div>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <div className="p-4 text-center text-gray-400">
+                        {accountSearchQuery ? "Nenhuma conta encontrada." : "Digite para buscar."}
+                    </div>
+                )}
+            </div>
+        </div>
+      </Modal>
 
        <Modal isOpen={isViewModalOpen} onClose={closeViewModal} title={`Visualização: ${headerData?.dre_nome || ''}`} size="screen80">
             <div className="space-y-4 max-h-[70vh] overflow-y-auto">

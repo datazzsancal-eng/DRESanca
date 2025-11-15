@@ -10,6 +10,7 @@ import SituacaoPage from './situacao/SituacaoPage';
 import TipoLinhaPage from './tipo-linha/TipoLinhaPage';
 import EstiloLinhaPage from './estilo-linha/EstiloLinhaPage';
 import TipoVisaoPage from './tipo-visao/TipoVisaoPage';
+import VisaoPage from './visao/VisaoPage';
 
 
 // Icons defined as stateless functional components
@@ -297,7 +298,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   
   const pageTitles: { [key: string]: string } = {
     dashboard: 'Dashboard',
-    visao: 'Visão',
+    visao: 'Gestão de Visões',
     cliente: 'Gestão de Clientes',
     'grupo-empresarial': 'Gestão de Grupos Empresariais',
     empresa: 'Gestão de Empresas',
@@ -381,6 +382,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
               </div>
             </>
           )}
+          {activePage === 'visao' && <VisaoPage />}
           {activePage === 'cliente' && <ClientePage />}
           {activePage === 'grupo-empresarial' && <GrupoEmpresarialPage />}
           {activePage === 'empresa' && <EmpresaPage />}
@@ -390,7 +392,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
           {activePage === 'tipo-linha' && <TipoLinhaPage />}
           {activePage === 'estilo-linha' && <EstiloLinhaPage />}
           {activePage === 'tipo-visao' && <TipoVisaoPage />}
-          {(activePage === 'visao' || activePage === 'usuarios' || activePage === 'permissoes') && (
+          {(activePage === 'usuarios' || activePage === 'permissoes') && (
              <div className="flex items-center justify-center h-full p-8 text-center bg-gray-800 border border-gray-700 rounded-lg">
                 <div>
                     <h2 className="text-xl font-bold text-white">Em Desenvolvimento</h2>

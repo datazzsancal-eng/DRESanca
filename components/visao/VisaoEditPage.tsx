@@ -35,7 +35,6 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [tiposVisao, setTiposVisao] = useState<TipoVisao[]>([]);
   const [empresasDoCliente, setEmpresasDoCliente] = useState<Empresa[]>([]);
-  const [cnpjsDoCliente, setCnpjsDoCliente] = useState<string[]>([]);
   const [selectedEmpresas, setSelectedEmpresas] = useState<Set<string>>(new Set());
   const [selectedGrupoCnpjs, setSelectedGrupoCnpjs] = useState<Set<string>>(new Set());
   
@@ -45,6 +44,19 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
 
   const tiposVisaoMap = useMemo(() => new Map(tiposVisao.map(t => [t.id, t.tpvis_nome])), [tiposVisao]);
   const tipoVisaoAtual = useMemo(() => headerData.tipo_visao_id ? tiposVisaoMap.get(headerData.tipo_visao_id) : null, [headerData.tipo_visao_id, tiposVisaoMap]);
+
+  const cnpjsComNomes = useMemo(() => {
+    if (!empresasDoCliente) return [];
+    const map = new Map<string, string>();
+    empresasDoCliente.forEach(empresa => {
+        if (empresa.emp_cnpj_raiz && !map.has(empresa.emp_cnpj_raiz)) {
+            const displayName = empresa.emp_nome_reduz || empresa.emp_nome || 'NOME INDISPONÍVEL';
+            map.set(empresa.emp_cnpj_raiz, displayName);
+        }
+    });
+    return Array.from(map.entries()).map(([cnpj, nome]) => ({ cnpj, nome })).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [empresasDoCliente]);
+
 
   // Initial Data Fetch
   useEffect(() => {
@@ -86,7 +98,6 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
     const fetchClientData = async () => {
       if (!headerData.cliente_id) {
         setEmpresasDoCliente([]);
-        setCnpjsDoCliente([]);
         return;
       }
       setLoading(true);
@@ -94,8 +105,6 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
         const { data, error } = await supabase.from('dre_empresa').select('id, emp_nome, emp_cnpj_raiz, emp_nome_reduz, emp_nome_cmpl').eq('cliente_id', headerData.cliente_id);
         if (error) throw error;
         setEmpresasDoCliente(data || []);
-        const uniqueCnpjs = [...new Set(data.map(e => e.emp_cnpj_raiz).filter(Boolean) as string[])].sort();
-        setCnpjsDoCliente(uniqueCnpjs);
       } catch (err: any) {
         setError(`Falha ao buscar empresas do cliente: ${err.message}`);
       } finally {
@@ -257,7 +266,14 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
         if (error) throw error;
         currentVisaoId = data.id;
       } else {
-        const { error } = await supabase.from('dre_visao').update(payload).eq('id', currentVisaoId);
+        // Only update fields that are allowed to change
+        const updatePayload = {
+            vis_nome: headerData.vis_nome,
+            vis_descri: headerData.vis_descri,
+            vis_ativo_sn: headerData.vis_ativo_sn,
+            cnpj_raiz: headerData.cnpj_raiz // This is needed if it was set on creation
+        };
+        const { error } = await supabase.from('dre_visao').update(updatePayload).eq('id', currentVisaoId);
         if (error) throw error;
       }
 
@@ -331,14 +347,14 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300">Cliente</label>
-            <select name="cliente_id" value={headerData.cliente_id || ''} onChange={handleHeaderChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md">
+            <select name="cliente_id" value={headerData.cliente_id || ''} onChange={handleHeaderChange} required disabled={visaoId !== 'new'} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md disabled:bg-gray-600 disabled:cursor-not-allowed">
               <option value="">Selecione um Cliente</option>
               {clientes.map(c => <option key={c.id} value={c.id}>{c.cli_nome}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300">Tipo da Visão</label>
-            <select name="tipo_visao_id" value={headerData.tipo_visao_id || ''} onChange={handleHeaderChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md">
+            <select name="tipo_visao_id" value={headerData.tipo_visao_id || ''} onChange={handleHeaderChange} required disabled={visaoId !== 'new'} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md disabled:bg-gray-600 disabled:cursor-not-allowed">
               <option value="">Selecione um Tipo</option>
               {tiposVisao.map(t => <option key={t.id} value={t.id}>{t.tpvis_nome}</option>)}
             </select>
@@ -363,9 +379,9 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
           {tipoVisaoAtual === 'CNPJ RAIZ' && (
             <div>
               <label className="block text-sm font-medium text-gray-300">Selecione o CNPJ Raiz</label>
-              <select name="cnpj_raiz" value={headerData.cnpj_raiz || ''} onChange={handleHeaderChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md">
+              <select name="cnpj_raiz" value={headerData.cnpj_raiz || ''} onChange={handleHeaderChange} required disabled={visaoId !== 'new'} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md disabled:bg-gray-600 disabled:cursor-not-allowed">
                 <option value="">Selecione um CNPJ Raiz</option>
-                {cnpjsDoCliente.map(cnpj => <option key={cnpj} value={cnpj}>{cnpj}</option>)}
+                {cnpjsComNomes.map(item => <option key={item.cnpj} value={item.cnpj}>{`${item.nome} - ${item.cnpj}`}</option>)}
               </select>
             </div>
           )}
@@ -374,35 +390,56 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
             <div>
               <label className="block mb-2 text-sm font-medium text-gray-300">Selecione os CNPJs Raiz para o Grupo</label>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-48 overflow-y-auto p-2 border border-gray-700 rounded-md">
-                {cnpjsDoCliente.map(cnpj => (
-                  <label key={cnpj} className="flex items-center p-2 space-x-2 text-sm text-gray-200 bg-gray-800 rounded-md cursor-pointer hover:bg-gray-700">
-                    <input type="checkbox" checked={selectedGrupoCnpjs.has(cnpj)} onChange={() => handleGrupoCnpjChange(cnpj)} className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500"/>
-                    <span>{cnpj}</span>
+                {cnpjsComNomes.map(item => (
+                  <label key={item.cnpj} className={`flex items-center p-2 space-x-2 text-sm text-gray-200 bg-gray-800 rounded-md ${visaoId === 'new' ? 'cursor-pointer hover:bg-gray-700' : 'cursor-default'}`}>
+                    <input type="checkbox" checked={selectedGrupoCnpjs.has(item.cnpj)} onChange={() => handleGrupoCnpjChange(item.cnpj)} disabled={visaoId !== 'new'} className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500 disabled:cursor-not-allowed"/>
+                    <span className="truncate" title={`${item.nome} - ${item.cnpj}`}>{`${item.nome} - ${item.cnpj}`}</span>
                   </label>
                 ))}
               </div>
             </div>
           )}
           
-          {tipoVisaoAtual && tipoVisaoAtual !== 'CLIENTE' && (
-             <div className="mt-4">
-                <label className="block mb-2 text-sm font-medium text-gray-300">
-                  {tipoVisaoAtual === 'CUSTOMIZADO' ? 'Empresas da Visão' : 'Empresas Associadas (Automático)'}
-                </label>
-                <Shuttle
-                  items={empresasDoCliente.map(e => ({ id: e.id, label: `${e.emp_nome} (${e.emp_nome_cmpl || e.emp_nome_reduz || 'N/A'})` }))}
-                  selectedIds={selectedEmpresas}
-                  onChange={tipoVisaoAtual === 'CUSTOMIZADO' ? setSelectedEmpresas : () => {}}
-                  height="350px"
-                />
-             </div>
-          )}
-           {tipoVisaoAtual === 'CLIENTE' && (
-            <div className="p-4 mt-4 text-center text-gray-400 bg-gray-800 rounded-md">
-              Todas as {empresasDoCliente.length} empresas do cliente serão incluídas automaticamente.
-            </div>
-           )}
+            {tipoVisaoAtual === 'CUSTOMIZADO' && (
+                <div className="mt-4">
+                    <label className="block mb-2 text-sm font-medium text-gray-300">Empresas da Visão</label>
+                    <Shuttle
+                        items={empresasDoCliente.map(e => ({ id: e.id, label: `${e.emp_nome} (${e.emp_nome_cmpl || e.emp_nome_reduz || 'N/A'})` }))}
+                        selectedIds={selectedEmpresas}
+                        onChange={setSelectedEmpresas}
+                        height="350px"
+                    />
+                </div>
+            )}
 
+            {['CLIENTE', 'CNPJ RAIZ', 'GRUPO'].includes(tipoVisaoAtual || '') && (
+                <div className="mt-4">
+                    <label className="block mb-2 text-sm font-medium text-gray-300">
+                        Empresas Associadas (Automático)
+                    </label>
+                    {selectedEmpresas.size > 0 ? (
+                        <div className="p-2 border border-gray-700 rounded-md max-h-96 overflow-y-auto bg-gray-800">
+                            <ul className="space-y-1">
+                                {empresasDoCliente
+                                    .filter(e => selectedEmpresas.has(e.id))
+                                    .sort((a, b) => (a.emp_nome || '').localeCompare(b.emp_nome || ''))
+                                    .map(empresa => (
+                                        <li key={empresa.id} className="px-3 py-1.5 text-sm text-gray-300 rounded">
+                                            {empresa.emp_nome} ({empresa.emp_nome_cmpl || empresa.emp_nome_reduz || 'N/A'})
+                                        </li>
+                                    ))
+                                }
+                            </ul>
+                        </div>
+                    ) : (
+                        <div className="p-4 text-center text-gray-400 bg-gray-800 rounded-md">
+                            {tipoVisaoAtual === 'CLIENTE'
+                                ? `Todas as ${empresasDoCliente.length} empresas do cliente serão incluídas.`
+                                : 'Nenhuma empresa associada com a seleção atual.'}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
       )}
 

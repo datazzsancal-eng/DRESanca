@@ -60,6 +60,9 @@ const PdfIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5
 const CsvIcon = () => <Icon path="M4 6h16M4 10h16M4 14h16M4 18h16" className="h-5 w-5 mr-1" />;
 const MenuIcon = () => <Icon path="M4 6h16M4 12h16M4 18h16" />;
 const CloseIcon = () => <Icon path="M6 18L18 6M6 6l12 12" />;
+const ChevronDoubleLeftIcon = () => <Icon path="M11 17l-5-5 5-5M18 17l-5-5 5-5" className="h-5 w-5"/>;
+const ChevronDoubleRightIcon = () => <Icon path="M13 17l5-5-5-5M6 17l5-5-5-5" className="h-5 w-5"/>;
+
 const SancalLogo = () => (
   <img 
     src="https://www.sancal.com.br/wp-content/uploads/elementor/thumbs/logo-white-qfydekyggou3snwsfrlsc913ym97p1hveemqwoinls.png" 
@@ -123,21 +126,30 @@ interface SidebarProps {
   setIsSidebarOpen: (isOpen: boolean) => void;
   activePage: string;
   setActivePage: (page: string) => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebarOpen, activePage, setActivePage }) => {
+const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebarOpen, activePage, setActivePage, isCollapsed, onToggleCollapse }) => {
   const [openMenus, setOpenMenus] = useState<{ [key: string]: boolean }>({
     estrutura: true,
     configuracoes: false,
     administracao: false,
   });
+  
+  useEffect(() => {
+    if (isCollapsed) {
+      setOpenMenus({});
+    }
+  }, [isCollapsed]);
+
 
   const toggleMenu = (id: string) => {
     setOpenMenus(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const getNavItemClasses = (page: string) => 
-    `flex items-center w-full px-4 py-2.5 text-sm font-medium text-left rounded-lg transition-colors duration-200 ${
+    `flex items-center w-full py-2.5 text-sm font-medium text-left rounded-lg transition-colors duration-200 ${isCollapsed ? 'px-2 justify-center' : 'px-4'} ${
       activePage === page 
       ? 'bg-gray-900 text-white' 
       : 'text-gray-300 hover:bg-gray-700 hover:text-white'
@@ -153,25 +165,29 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebar
       <div className={`fixed inset-0 z-30 bg-black bg-opacity-50 transition-opacity lg:hidden ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
            onClick={() => setIsSidebarOpen(false)}>
       </div>
-      <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col w-64 bg-gray-800 text-white transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:inset-0 transition-transform duration-300 ease-in-out`}>
-        <div className="flex items-center justify-between h-16 px-4 border-b border-gray-700">
-          <SancalLogo />
+      <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-800 text-white transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:inset-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-64'}`}>
+        <div className={`flex items-center h-16 px-4 border-b border-gray-700 shrink-0 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+          {!isCollapsed ? <SancalLogo /> : <DashboardIcon />}
           <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
               <CloseIcon />
           </button>
         </div>
-        <nav className="flex-1 p-2 space-y-1">
+        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
           {navigationData.map((item) => {
             if (item.children) {
-              const isOpen = openMenus[item.id];
+              const isOpen = openMenus[item.id] && !isCollapsed;
               return (
                 <div key={item.id}>
-                  <button onClick={() => toggleMenu(item.id)} className={`${getNavItemClasses(item.id + '-parent')} w-full justify-between`}>
+                  <button 
+                    onClick={() => !isCollapsed && toggleMenu(item.id)} 
+                    className={`${getNavItemClasses(item.id + '-parent')} w-full ${!isCollapsed ? 'justify-between' : 'justify-center'}`}
+                    title={isCollapsed ? item.label : ''}
+                  >
                     <div className="flex items-center">
                       <item.icon />
-                      <span className="ml-3">{item.label}</span>
+                      {!isCollapsed && <span className="ml-3">{item.label}</span>}
                     </div>
-                    {isOpen ? <ChevronUpIcon /> : <ChevronDownIcon />}
+                    {!isCollapsed && (isOpen ? <ChevronUpIcon /> : <ChevronDownIcon />)}
                   </button>
                   {isOpen && (
                     <div className="py-1 pl-2 space-y-1">
@@ -193,23 +209,34 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebar
               );
             }
             return (
-              <button key={item.id} onClick={() => setActivePage(item.id)} className={getNavItemClasses(item.id)}>
+              <button key={item.id} onClick={() => setActivePage(item.id)} className={getNavItemClasses(item.id)} title={isCollapsed ? item.label : ''}>
                 <item.icon />
-                <span className="ml-3">{item.label}</span>
+                {!isCollapsed && <span className="ml-3">{item.label}</span>}
               </button>
             );
           })}
         </nav>
-        <div className="p-4 border-t border-gray-700">
-          <div className="flex items-center mb-4">
+        <div className="p-2 border-t border-gray-700 shrink-0">
+          <div className={`flex items-center p-2 rounded-lg ${isCollapsed ? 'justify-center' : ''}`}>
             <UserIcon />
-            <div className="ml-3">
-              <p className="text-sm font-semibold">Admin</p>
-              <p className="text-xs text-gray-400">admin@sancal.com</p>
-            </div>
+            {!isCollapsed && (
+              <div className="ml-3">
+                <p className="text-sm font-semibold">Admin</p>
+                <p className="text-xs text-gray-400">admin@sancal.com</p>
+              </div>
+            )}
           </div>
-          <button onClick={onLogout} className="flex items-center justify-center w-full px-4 py-2 text-sm font-medium text-gray-300 bg-gray-700 rounded-lg hover:bg-red-600 hover:text-white transition-colors duration-200">
-            <LogoutIcon /> <span className="ml-2">Logout</span>
+          <button onClick={onLogout} className={`flex items-center w-full p-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-red-600 hover:text-white transition-colors duration-200 ${isCollapsed ? 'justify-center' : ''}`} title={isCollapsed ? 'Logout' : ''}>
+            <LogoutIcon /> 
+            {!isCollapsed && <span className="ml-2">Logout</span>}
+          </button>
+           <button
+            onClick={onToggleCollapse}
+            className={`hidden lg:flex items-center w-full p-2 mt-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-gray-600 transition-colors duration-200 ${isCollapsed ? 'justify-center' : ''}`}
+            title={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
+          >
+            {isCollapsed ? <ChevronDoubleRightIcon /> : <ChevronDoubleLeftIcon />}
+            {!isCollapsed && <span className="ml-2">Recolher</span>}
           </button>
         </div>
       </aside>
@@ -295,6 +322,7 @@ interface DashboardPageProps {
 }
 const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState('dashboard');
   const [dreData, setDreData] = useState<DreDataRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -478,6 +506,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         setIsSidebarOpen={setIsSidebarOpen}
         activePage={activePage}
         setActivePage={setActivePage}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
       />
       <div className="flex flex-col flex-1 w-full overflow-y-auto">
         <header className="flex items-center justify-between h-16 px-4 bg-gray-800 border-b border-gray-700 lg:justify-end">

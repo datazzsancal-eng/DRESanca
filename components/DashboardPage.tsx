@@ -13,11 +13,17 @@ import EstiloLinhaPage from './estilo-linha/EstiloLinhaPage';
 import TipoVisaoPage from './tipo-visao/TipoVisaoPage';
 import VisaoPage from './visao/VisaoPage';
 
-// Type definition for period
+// Type definitions
 interface Periodo {
   retorno: number;
   display: string;
 }
+interface Visao {
+  id: string;
+  vis_nome: string;
+  vis_descri: string | null;
+}
+
 
 // Icons defined as stateless functional components
 const Icon = ({ path, className = "h-6 w-6" }: { path: string, className?: string }) => (
@@ -299,14 +305,21 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   const [selectedPeriod, setSelectedPeriod] = useState<number | ''>('');
   const [periodsLoading, setPeriodsLoading] = useState(true);
 
+  // State for visoes dropdown
+  const [visoes, setVisoes] = useState<Visao[]>([]);
+  const [selectedVisao, setSelectedVisao] = useState<string>('');
+  const [visoesLoading, setVisoesLoading] = useState(true);
+
   useEffect(() => {
     const fetchData = async () => {
       // DRE data (mocked)
       setLoading(true);
       setError(null);
       setWarning(null);
-      setDreData(mockDreData); 
+      setDreData(mockDreData);
       setLoading(false);
+
+      let currentWarnings: string[] = [];
 
       // Fetch periods from Supabase view
       setPeriodsLoading(true);
@@ -315,36 +328,58 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
           .from('viw_periodo_calc')
           .select('retorno, display')
           .order('retorno', { ascending: false });
-
         if (periodError) throw periodError;
-
         if (data && data.length > 0) {
           setPeriods(data);
           setSelectedPeriod(data[0].retorno);
         } else {
-            throw new Error("Nenhum período foi encontrado na base de dados.");
+          throw new Error("Nenhum período foi encontrado na base de dados.");
         }
       } catch (err: any) {
         const errorMessage = err.message || 'Verifique a conexão ou as permissões da view.';
         console.error("Failed to fetch periods:", err);
-        // Fallback to mock data on error
         const mockPeriods: Periodo[] = [
-            { retorno: 202408, display: 'AGO/24' },
-            { retorno: 202407, display: 'JUL/24' },
-            { retorno: 202406, display: 'JUN/24' },
-            { retorno: 202405, display: 'MAI/24' },
-            { retorno: 202404, display: 'ABR/24' },
+          { retorno: 202408, display: 'AGO/24' },
+          { retorno: 202407, display: 'JUL/24' },
         ];
         setPeriods(mockPeriods);
         if (mockPeriods.length > 0) {
-            setSelectedPeriod(mockPeriods[0].retorno);
+          setSelectedPeriod(mockPeriods[0].retorno);
         }
-        setWarning(`Atenção: Não foi possível carregar os períodos (${errorMessage}). Usando dados de exemplo.`);
+        currentWarnings.push(`Atenção: Não foi possível carregar os períodos (${errorMessage}). Usando dados de exemplo.`);
       } finally {
         setPeriodsLoading(false);
       }
+      
+      // Fetch visoes from Supabase table
+      setVisoesLoading(true);
+      try {
+          const { data, error: visaoError } = await supabase
+            .from('dre_visao')
+            .select('id, vis_nome, vis_descri')
+            .order('vis_nome');
+          if (visaoError) throw visaoError;
+          if (data && data.length > 0) {
+              setVisoes(data);
+              setSelectedVisao(data[0].id);
+          } else {
+              currentWarnings.push('Nenhuma visão foi encontrada na base de dados.');
+              setVisoes([]);
+          }
+      } catch (err: any) {
+          const errorMessage = err.message || 'Verifique a conexão ou as permissões da tabela.';
+          console.error("Failed to fetch visoes:", err);
+          currentWarnings.push(`Atenção: Não foi possível carregar as visões (${errorMessage}).`);
+          setVisoes([]);
+      } finally {
+          setVisoesLoading(false);
+      }
+
+      if (currentWarnings.length > 0) {
+          setWarning(currentWarnings.join(' '));
+      }
     };
-    
+
     if (activePage === 'dashboard') {
       fetchData();
     }
@@ -415,15 +450,23 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                         <option>Sem períodos</option>
                       )}
                     </select>
-                    <select className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                      <option>Visão Mensal</option>
-                      <option>Visão Anual</option>
-                    </select>
-                    <select className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                      <option>MANDABRASA CO</option>
-                      <option>MANDABRASA CO REST</option>
-                      <option>MAND ABRASA PART</option>
-                      <option>CARNE E BRASA</option>
+                    <select
+                      value={selectedVisao}
+                      onChange={(e) => setSelectedVisao(e.target.value)}
+                      disabled={visoesLoading || visoes.length === 0}
+                      className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                    >
+                      {visoesLoading ? (
+                        <option>Carregando...</option>
+                      ) : visoes.length > 0 ? (
+                        visoes.map(v => (
+                          <option key={v.id} value={v.id} title={v.vis_descri || v.vis_nome}>
+                            {v.vis_nome}
+                          </option>
+                        ))
+                      ) : (
+                        <option>Nenhuma visão</option>
+                      )}
                     </select>
                     <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                       <PdfIcon /> PDF

@@ -524,74 +524,77 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
       />
       <div className="flex flex-col flex-1 w-full overflow-y-auto">
-        <header className="flex items-center justify-between h-16 px-4 bg-gray-800 border-b border-gray-700 lg:justify-end">
+        <header className="flex items-center justify-between h-16 px-4 bg-gray-800 border-b border-gray-700 lg:justify-end sticky top-0 z-20">
             <button className="text-gray-300 lg:hidden" onClick={() => setIsSidebarOpen(true)}>
                 <MenuIcon />
             </button>
             <h1 className="text-lg font-semibold text-white">{pageTitles[activePage] || 'Dashboard'}</h1>
         </header>
 
-        <main className="p-4 space-y-4">
+        <main className="p-4">
           {activePage === 'dashboard' && (
-            <>
-              {(error || warning) && (
-                <div className={`p-3 text-sm rounded-lg ${error ? 'text-red-400 bg-red-900/50 border border-red-800' : 'text-yellow-400 bg-yellow-900/50 border border-yellow-800'}`}>
-                    {error || warning}
-                </div>
-              )}
-              {/* Stat Cards */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard title="Receita Líquida" subtitle="Mês Atual" value="R$ 1.5M" percentage="85% da meta" variation={5.2} />
-                <StatCard title="Lucro Bruto" subtitle="Mês Atual" value="R$ 800K" percentage="53.3% da receita" variation={3.1} />
-                <StatCard title="EBITDA" subtitle="Mês Atual" value="R$ 450K" percentage="30% da receita" variation={2.1} />
-                <StatCard title="Lucro Líquido" subtitle="Mês Atual" value="R$ 350K" percentage="23.3% da receita" variation={-1.8} />
-              </div>
-
-              {/* Filters and Title */}
-              <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md">
-                <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-                  <h2 className="text-lg font-bold text-white">DRE VISÃO CONSOLIDADA</h2>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select 
-                      value={selectedPeriod}
-                      onChange={(e) => setSelectedPeriod(Number(e.target.value))}
-                      disabled={periodsLoading || periods.length === 0}
-                      className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                    >
-                      {periodsLoading ? (
-                        <option>Carregando...</option>
-                      ) : periods.length > 0 ? (
-                        periods.map(p => <option key={p.retorno} value={p.retorno}>{p.display}</option>)
-                      ) : (
-                        <option>Sem períodos</option>
-                      )}
-                    </select>
-                    <select
-                      value={selectedVisao}
-                      onChange={(e) => setSelectedVisao(e.target.value)}
-                      disabled={visoesLoading || visoes.length === 0}
-                      className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                    >
-                      {visoesLoading ? (
-                        <option>Carregando...</option>
-                      ) : visoes.length > 0 ? (
-                        visoes.map(v => (
-                          <option key={v.id} value={v.id} title={v.vis_descri || v.vis_nome}>
-                            {v.vis_nome}
-                          </option>
-                        ))
-                      ) : (
-                        <option>Nenhuma visão</option>
-                      )}
-                    </select>
-                    <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                      <PdfIcon /> PDF
-                    </button>
-                    <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                      <CsvIcon /> CSV
-                    </button>
+            <div>
+              {/* Sticky container for cards and filters */}
+              <div className="sticky top-16 z-10 bg-gray-900 -mx-4 px-4 py-4 mb-4">
+                  {(error || warning) && (
+                    <div className={`p-3 mb-4 text-sm rounded-lg ${error ? 'text-red-400 bg-red-900/50 border border-red-800' : 'text-yellow-400 bg-yellow-900/50 border border-yellow-800'}`}>
+                        {error || warning}
+                    </div>
+                  )}
+                  {/* Stat Cards */}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <StatCard title="Receita Líquida" subtitle="Mês Atual" value="R$ 1.5M" percentage="85% da meta" variation={5.2} />
+                    <StatCard title="Lucro Bruto" subtitle="Mês Atual" value="R$ 800K" percentage="53.3% da receita" variation={3.1} />
+                    <StatCard title="EBITDA" subtitle="Mês Atual" value="R$ 450K" percentage="30% da receita" variation={-1.8} />
+                    <StatCard title="Lucro Líquido" subtitle="Mês Atual" value="R$ 350K" percentage="23.3% da receita" variation={-1.8} />
                   </div>
-                </div>
+
+                  {/* Filters and Title */}
+                  <div className="p-4 mt-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md">
+                    <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+                      <h2 className="text-lg font-bold text-white">DRE VISÃO CONSOLIDADA</h2>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select 
+                          value={selectedPeriod}
+                          onChange={(e) => setSelectedPeriod(Number(e.target.value))}
+                          disabled={periodsLoading || periods.length === 0}
+                          className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                        >
+                          {periodsLoading ? (
+                            <option>Carregando...</option>
+                          ) : periods.length > 0 ? (
+                            periods.map(p => <option key={p.retorno} value={p.retorno}>{p.display}</option>)
+                          ) : (
+                            <option>Sem períodos</option>
+                          )}
+                        </select>
+                        <select
+                          value={selectedVisao}
+                          onChange={(e) => setSelectedVisao(e.target.value)}
+                          disabled={visoesLoading || visoes.length === 0}
+                          className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                        >
+                          {visoesLoading ? (
+                            <option>Carregando...</option>
+                          ) : visoes.length > 0 ? (
+                            visoes.map(v => (
+                              <option key={v.id} value={v.id} title={v.vis_descri || v.vis_nome}>
+                                {v.vis_nome}
+                              </option>
+                            ))
+                          ) : (
+                            <option>Nenhuma visão</option>
+                          )}
+                        </select>
+                        <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                          <PdfIcon /> PDF
+                        </button>
+                        <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                          <CsvIcon /> CSV
+                        </button>
+                      </div>
+                    </div>
+                  </div>
               </div>
               
               {/* Data Table */}
@@ -606,7 +609,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                     </div>
                 )}
               </div>
-            </>
+            </div>
           )}
           {activePage === 'visao' && <VisaoPage />}
           {activePage === 'cliente' && <ClientePage />}

@@ -26,7 +26,6 @@ const Shuttle: React.FC<ShuttleProps> = ({
   const [availableFilter, setAvailableFilter] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('');
   const [highlightedAvailable, setHighlightedAvailable] = useState<Set<string>>(new Set());
-  // FIX: Corrected typo in state setter from setSelectedSelected to setHighlightedSelected for consistency.
   const [highlightedSelected, setHighlightedSelected] = useState<Set<string>>(new Set());
 
   const { availableItems, selectedItems } = useMemo(() => {
@@ -74,7 +73,6 @@ const Shuttle: React.FC<ShuttleProps> = ({
       setHighlightedAvailable(new Set());
     } else {
       highlightedSelected.forEach(id => newSelectedIds.delete(id));
-      // FIX: Using the corrected state setter name. This resolves the error on line 75.
       setHighlightedSelected(new Set());
     }
     onChange(newSelectedIds);
@@ -90,7 +88,6 @@ const Shuttle: React.FC<ShuttleProps> = ({
         onChange(newSelectedIds);
     }
     setHighlightedAvailable(new Set());
-    // FIX: Using the corrected state setter name. This resolves the error on line 90.
     setHighlightedSelected(new Set());
   };
   

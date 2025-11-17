@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import ClientePage from './cliente/ClientePage';
@@ -22,6 +20,24 @@ interface Visao {
   id: string;
   vis_nome: string;
   vis_descri: string | null;
+}
+interface DreDataRow {
+    desc: string;
+    jan: number;
+    fev: number;
+    mar: number;
+    abr: number;
+    mai: number;
+    jun: number;
+    jul: number;
+    ago: number;
+    set: number;
+    out: number;
+    nov: number;
+    dez: number;
+    accumulated: number;
+    percentage: number;
+    isBold: boolean;
 }
 
 
@@ -232,16 +248,11 @@ const StatCard: React.FC<StatCardProps> = ({ title, subtitle, value, percentage,
 
 // DreTable Component
 interface DreTableProps {
-    data: any[];
+    data: DreDataRow[];
 }
 const DreTable: React.FC<DreTableProps> = ({ data }) => {
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     
-    const receitaLiquidaRow = data.find(row => row.desc === 'Receita Líquida');
-    const receitaLiquidaValues = receitaLiquidaRow ? months.map(m => receitaLiquidaRow[m.toLowerCase()] || 0) : [];
-    const totalReceitaLiquida = receitaLiquidaValues.reduce((a, b) => a + b, 0);
-
-
     return (
         <div className="overflow-x-auto bg-gray-800 border border-gray-700 rounded-lg shadow-md">
             <table className="min-w-full text-sm divide-y divide-gray-700">
@@ -257,9 +268,9 @@ const DreTable: React.FC<DreTableProps> = ({ data }) => {
                 </thead>
                 <tbody className="bg-gray-800 divide-y divide-gray-700">
                     {data.map((row, index) => {
-                        const values = months.map(m => row[m.toLowerCase()] || 0);
-                        const accumulated = values.reduce((a, b) => a + b, 0);
-                        const percentage = totalReceitaLiquida !== 0 ? (accumulated / totalReceitaLiquida * 100).toFixed(2) : '0.00';
+                        const values = months.map(m => row[m.toLowerCase() as keyof DreDataRow] as number || 0);
+                        const accumulated = row.accumulated || 0;
+                        const percentage = row.percentage || 0;
                         return (
                             <tr key={index} className="hover:bg-gray-700/50">
                                 <td className={`px-3 py-2 whitespace-nowrap text-gray-300 ${row.isBold ? 'font-bold text-white' : ''}`}>{row.desc}</td>
@@ -267,7 +278,7 @@ const DreTable: React.FC<DreTableProps> = ({ data }) => {
                                     <td key={i} className={`px-3 py-2 text-right whitespace-nowrap ${val < 0 ? 'text-red-500' : 'text-gray-200'}`}>{val.toLocaleString('pt-BR')}</td>
                                 ))}
                                 <td className={`px-3 py-2 text-right whitespace-nowrap font-medium ${accumulated < 0 ? 'text-red-500' : 'text-white'}`}>{accumulated.toLocaleString('pt-BR')}</td>
-                                <td className={`px-3 py-2 text-right whitespace-nowrap font-medium text-gray-400`}>{percentage}%</td>
+                                <td className={`px-3 py-2 text-right whitespace-nowrap font-medium text-gray-400`}>{percentage.toFixed(2)}%</td>
                             </tr>
                         );
                     })}
@@ -277,16 +288,6 @@ const DreTable: React.FC<DreTableProps> = ({ data }) => {
     );
 };
 
-// Mock data for DRE Table to avoid Supabase errors on a non-existent table
-const mockDreData = [
-  { desc: 'Receita Líquida', jan: 1500000, fev: 1600000, mar: 1550000, abr: 1700000, mai: 1800000, jun: 1750000, jul: 1850000, ago: 1900000, set: 1950000, out: 2000000, nov: 2100000, dez: 2200000, isBold: true },
-  { desc: 'Custos', jan: -700000, fev: -750000, mar: -720000, abr: -800000, mai: -850000, jun: -820000, jul: -880000, ago: -900000, set: -920000, out: -950000, nov: -1000000, dez: -1050000, isBold: false },
-  { desc: 'Lucro Bruto', jan: 800000, fev: 850000, mar: 830000, abr: 900000, mai: 950000, jun: 930000, jul: 970000, ago: 1000000, set: 1030000, out: 1050000, nov: 1100000, dez: 1150000, isBold: true },
-  { desc: 'Despesas Operacionais', jan: -300000, fev: -310000, mar: -305000, abr: -320000, mai: -330000, jun: -325000, jul: -340000, ago: -350000, set: -360000, out: -370000, nov: -380000, dez: -400000, isBold: false },
-  { desc: 'EBITDA', jan: 500000, fev: 540000, mar: 525000, abr: 580000, mai: 620000, jun: 605000, jul: 630000, ago: 650000, set: 670000, out: 680000, nov: 720000, dez: 750000, isBold: true },
-  { desc: 'Resultado Líquido', jan: 350000, fev: 380000, mar: 370000, abr: 410000, mai: 440000, jun: 430000, jul: 450000, ago: 460000, set: 480000, out: 490000, nov: 520000, dez: 550000, isBold: true },
-];
-
 
 // Main DashboardPage component
 interface DashboardPageProps {
@@ -295,8 +296,8 @@ interface DashboardPageProps {
 const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activePage, setActivePage] = useState('dashboard');
-  const [dreData, setDreData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [dreData, setDreData] = useState<DreDataRow[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   
@@ -310,15 +311,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   const [selectedVisao, setSelectedVisao] = useState<string>('');
   const [visoesLoading, setVisoesLoading] = useState(true);
 
+  // Fetch dropdown data on mount
   useEffect(() => {
-    const fetchData = async () => {
-      // DRE data (mocked)
-      setLoading(true);
-      setError(null);
-      setWarning(null);
-      setDreData(mockDreData);
-      setLoading(false);
-
+    const fetchDropdownData = async () => {
       let currentWarnings: string[] = [];
 
       // Fetch periods from Supabase view
@@ -331,22 +326,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         if (periodError) throw periodError;
         if (data && data.length > 0) {
           setPeriods(data);
-          setSelectedPeriod(data[0].retorno);
+          setSelectedPeriod(Number(data[0].retorno));
         } else {
-          throw new Error("Nenhum período foi encontrado na base de dados.");
+            currentWarnings.push('Nenhum período foi encontrado.');
         }
       } catch (err: any) {
         const errorMessage = err.message || 'Verifique a conexão ou as permissões da view.';
         console.error("Failed to fetch periods:", err);
-        const mockPeriods: Periodo[] = [
-          { retorno: 202408, display: 'AGO/24' },
-          { retorno: 202407, display: 'JUL/24' },
-        ];
-        setPeriods(mockPeriods);
-        if (mockPeriods.length > 0) {
-          setSelectedPeriod(mockPeriods[0].retorno);
-        }
-        currentWarnings.push(`Atenção: Não foi possível carregar os períodos (${errorMessage}). Usando dados de exemplo.`);
+        currentWarnings.push(`Atenção: Não foi possível carregar os períodos (${errorMessage}).`);
       } finally {
         setPeriodsLoading(false);
       }
@@ -381,9 +368,90 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     };
 
     if (activePage === 'dashboard') {
-      fetchData();
+        fetchDropdownData();
     }
   }, [activePage]);
+
+  // Fetch DRE data when filters change
+  useEffect(() => {
+    const fetchDreData = async () => {
+        if (activePage !== 'dashboard' || !selectedVisao || !selectedPeriod) {
+            setDreData([]);
+            return;
+        }
+
+        setLoading(true);
+        setError(null);
+        setWarning(null);
+
+        try {
+            const url = `https://webhook.moondog-ia.tech/webhook/dre?carga=${selectedPeriod}&id=${selectedVisao}`;
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Erro na API: ${response.status} - ${errorText || response.statusText}`);
+            }
+
+            const data = await response.json();
+            
+            if (!Array.isArray(data)) {
+                throw new Error("A resposta da API não é um formato válido (array).");
+            }
+
+            const visibleData = data.filter((row: any) => row.dre_linha_visivel === 'S');
+
+            const boldRows = [
+                'RECEITA OPERACIONAL BRUTA',
+                '(-)DEDUÇÕES RECEITA OPERACIONAL BRUTA',
+                'RECEITA OPERACIONAL LÍQUIDA',
+                'CUSTO MERCADORIAS VENDIDOS',
+                'LUCRO/PREJUÍZO OPERACIONAL BRUTO',
+                'DESPESAS COM RECURSOS HUMANOS',
+                'DESPESAS COMERCIAIS EM GERAL',
+                'RESULTADO ANTES DO IRPJ /CSLL',
+                'LUCRO LÍQUIDO MENSAL APÓS IRPJ / CSLL / SIMPLES',
+                'EBIT',
+                'EBITDA'
+            ];
+            const formattedData: DreDataRow[] = visibleData.map((row: any) => ({
+                desc: row.dre_linha_descri,
+                jan: row.conta_janeiro,
+                fev: row.conta_fevereiro,
+                mar: row.conta_marco,
+                abr: row.conta_abril,
+                mai: row.conta_maio,
+                jun: row.conta_junho,
+                jul: row.conta_julho,
+                ago: row.conta_agosto,
+                set: row.conta_setembro,
+                out: row.conta_outubro,
+                nov: row.conta_novembro,
+                dez: row.conta_dezembro,
+                accumulated: row.conta_acumulado,
+                percentage: row.conta_perc,
+                isBold: boldRows.includes(row.dre_linha_descri?.toUpperCase())
+            }));
+            
+            setDreData(formattedData);
+            if (formattedData.length === 0) {
+                setWarning("Nenhum dado encontrado para os filtros selecionados.")
+            } else {
+                setWarning(null);
+            }
+
+        } catch (err: any) {
+            console.error("Failed to fetch DRE data from webhook:", err);
+            setError(`Falha ao carregar dados do DRE: ${err.message}. Verifique o endpoint da API.`);
+            setDreData([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    fetchDreData();
+  }, [activePage, selectedVisao, selectedPeriod]);
+
   
   const pageTitles: { [key: string]: string } = {
     dashboard: 'Dashboard',
@@ -422,7 +490,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         <main className="p-4 space-y-4">
           {activePage === 'dashboard' && (
             <>
-              {warning && <div className="p-3 text-sm text-yellow-400 bg-yellow-900/50 border border-yellow-800 rounded-lg">{warning}</div>}
+              {(error || warning) && (
+                <div className={`p-3 text-sm rounded-lg ${error ? 'text-red-400 bg-red-900/50 border border-red-800' : 'text-yellow-400 bg-yellow-900/50 border border-yellow-800'}`}>
+                    {error || warning}
+                </div>
+              )}
               {/* Stat Cards */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard title="Receita Líquida" subtitle="Mês Atual" value="R$ 1.5M" percentage="85% da meta" variation={5.2} />
@@ -476,16 +548,36 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                     </button>
                   </div>
                 </div>
+                 {/* Verification Section */}
+                <div className="p-2 mt-4 text-xs bg-gray-900/50 border border-dashed border-gray-600 rounded-lg">
+                    <h3 className="mb-1 font-semibold text-gray-400">Valores de Verificação (Debug):</h3>
+                    <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                        <p className="text-gray-500">
+                            <span className="font-medium text-gray-300">Período Retorno: </span> {selectedPeriod || 'N/A'}
+                        </p>
+                        <p className="text-gray-500">
+                            <span className="font-medium text-gray-300">Período Display: </span> {periods.find(p => p.retorno === selectedPeriod)?.display || 'N/A'}
+                        </p>
+                        <p className="text-gray-500 truncate" title={selectedVisao}>
+                            <span className="font-medium text-gray-300">Visão ID: </span> {selectedVisao || 'N/A'}
+                        </p>
+                        <p className="text-gray-500">
+                            <span className="font-medium text-gray-300">Visão Nome: </span> {visoes.find(v => v.id === selectedVisao)?.vis_nome || 'N/A'}
+                        </p>
+                    </div>
+                </div>
               </div>
               
               {/* Data Table */}
               <div className="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700 min-h-[200px] flex items-center justify-center">
                 {loading ? (
-                  <p className="text-gray-400">Carregando dados...</p>
-                ) : error ? (
-                  <p className="text-red-500">{error}</p>
+                    <div className="flex items-center justify-center"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando dados...</span></div>
+                ) : dreData.length > 0 ? (
+                    <DreTable data={dreData} />
                 ) : (
-                  <DreTable data={dreData} />
+                    <div className="text-center text-gray-400">
+                        {(!selectedPeriod || !selectedVisao) ? "Selecione os filtros para visualizar os dados." : "Nenhum dado para exibir."}
+                    </div>
                 )}
               </div>
             </>

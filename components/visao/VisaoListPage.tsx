@@ -133,7 +133,6 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
     }
   };
 
-  // FIX: Explicitly type VisaoCard as React.FC to correctly handle the 'key' prop.
   const VisaoCard: React.FC<{ visao: Visao }> = ({ visao }) => {
     const companyCount = visao.rel_visao_empresa[0]?.count || 0;
     

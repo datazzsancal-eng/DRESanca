@@ -12,7 +12,6 @@ interface EmpresaRaiz {
   reduz_emp: string | null;
 }
 
-// Fix: Add type definition for plano de contas data
 interface PlanoConta {
   conta_estru: string | null;
   conta_descri: string | null;
@@ -100,7 +99,6 @@ const PlanoContabilComparePage: React.FC<PlanoContabilComparePageProps> = ({ onB
       if (plano1Res.error) throw plano1Res.error;
       if (plano2Res.error) throw plano2Res.error;
 
-      // Fix: Type the response data and filter out null keys to ensure type safety.
       const plano1Data: PlanoConta[] = plano1Res.data || [];
       const plano2Data: PlanoConta[] = plano2Res.data || [];
 

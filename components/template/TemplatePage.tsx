@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import TemplateListPage from './TemplateListPage';
+import { TemplateListPage } from './TemplateListPage';
 import TemplateEditPage from './TemplateEditPage';
 
 const TemplatePage: React.FC = () => {

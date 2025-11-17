@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -37,7 +36,7 @@ interface TemplateListPageProps {
   onAddNew: () => void;
 }
 
-const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onAddNew }) => {
+export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onAddNew }) => {
   // State management
   const [templates, setTemplates] = useState<Template[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -55,18 +54,14 @@ const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onA
   const [viewData, setViewData] = useState<TemplateViewData[]>([]);
   const [isViewLoading, setIsViewLoading] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
-  const [showVisibleOnly, setShowVisibleOnly] = useState(false);
 
   // Filter state
   const [filtroCliente, setFiltroCliente] = useState('');
   const [filtroNome, setFiltroNome] = useState('');
 
   const filteredViewData = useMemo(() => {
-    if (showVisibleOnly) {
-        return viewData.filter(row => row.dre_linha_visivel === 'S');
-    }
-    return viewData;
-  }, [viewData, showVisibleOnly]);
+    return viewData.filter(row => row.dre_linha_visivel === 'S');
+  }, [viewData]);
 
   // Data fetching
   const fetchData = useCallback(async () => {
@@ -164,7 +159,6 @@ const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onA
     setTemplateForAction(null);
     setViewData([]);
     setViewError(null);
-    setShowVisibleOnly(false);
   };
 
 
@@ -258,7 +252,7 @@ const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onA
     const title = `Template: ${templateForAction.dre_nome}`;
     doc.text(title, 14, 16);
 
-    const tableColumn = ["SEQ", "Descrição", "Tipo", "Valor / Conta / Fórmula", "Fonte", "Visível"];
+    const tableColumn = ["SEQ", "Descrição", "Tipo", "Valor / Conta / Fórmula", "Fonte"];
     const tableRows: (string | number)[][] = [];
 
     filteredViewData.forEach(item => {
@@ -268,7 +262,6 @@ const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onA
             item.tipo_linha || '',
             item.dre_linha_valor_descri || '',
             item.dre_linha_valor_fonte || 'N/A',
-            item.dre_linha_visivel === 'S' ? 'Sim' : 'Não'
         ];
         tableRows.push(rowData);
     });
@@ -308,9 +301,9 @@ const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onA
         <table className="min-w-full text-sm divide-y divide-gray-700">
           <thead className="bg-gray-700">
             <tr>
-              <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Controle</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Nome do Template</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Cliente</th>
+              <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Uso</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-center text-gray-400 uppercase">Ativo</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">Ações</th>
             </tr>
@@ -318,28 +311,20 @@ const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onA
           <tbody className="bg-gray-800 divide-y divide-gray-700">
             {templates.map(template => (
               <tr key={template.id} className="hover:bg-gray-700/50">
-                <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{template.dre_cont}</td>
                 <td className="px-4 py-2 font-medium text-white whitespace-nowrap">{template.dre_nome}</td>
-                <td className="px-4 py-2 text-gray-400 whitespace-nowrap">{template.cliente_id ? clientesMap.get(template.cliente_id) || 'Inválido' : 'N/A'}</td>
+                <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{template.cliente_id ? clientesMap.get(template.cliente_id) || 'Inválido' : 'Global'}</td>
+                <td className="px-4 py-2 text-gray-400 whitespace-nowrap">{template.dre_uso}</td>
                 <td className="px-4 py-2 text-center whitespace-nowrap">
-                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${template.dre_ativo_sn === 'S' ? 'bg-green-800 text-green-300' : 'bg-red-800 text-red-300'}`}>
+                   <span className={`px-2 py-1 text-xs font-semibold rounded-full ${template.dre_ativo_sn === 'S' ? 'bg-green-800 text-green-300' : 'bg-red-800 text-red-300'}`}>
                     {template.dre_ativo_sn === 'S' ? 'Sim' : 'Não'}
                   </span>
                 </td>
                 <td className="px-4 py-2 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end space-x-4">
-                    <button onClick={() => openViewModal(template)} className="text-cyan-400 hover:text-cyan-300" aria-label="Visualizar">
-                        <i className="fas fa-eye"></i>
-                    </button>
-                    <button onClick={() => onEditTemplate(template.id)} className="text-indigo-400 hover:text-indigo-300" aria-label="Editar">
-                      <i className="fas fa-pencil-alt"></i>
-                    </button>
-                    <button onClick={() => openCopyModal(template)} className="text-green-400 hover:text-green-300" aria-label="Copiar">
-                      <i className="fas fa-copy"></i>
-                    </button>
-                    <button onClick={() => openDeleteModal(template)} className="text-red-500 hover:text-red-400" aria-label="Excluir">
-                      <i className="fas fa-trash"></i>
-                    </button>
+                    <button onClick={() => openViewModal(template)} className="text-cyan-400 hover:text-cyan-300" title="Visualizar"><i className="fas fa-eye"></i></button>
+                    <button onClick={() => onEditTemplate(template.id)} className="text-indigo-400 hover:text-indigo-300" title="Editar"><i className="fas fa-pencil-alt"></i></button>
+                    <button onClick={() => openCopyModal(template)} className="text-teal-400 hover:text-teal-300" title="Copiar"><i className="fas fa-copy"></i></button>
+                    <button onClick={() => openDeleteModal(template)} className="text-red-500 hover:text-red-400" title="Excluir"><i className="fas fa-trash"></i></button>
                   </div>
                 </td>
               </tr>
@@ -349,152 +334,120 @@ const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onA
       </div>
     );
   };
-
+  
   return (
     <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md space-y-4">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <h2 className="text-lg font-bold text-white">Templates Cadastrados</h2>
+        <h2 className="text-lg font-bold text-white">Templates de DRE</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <select value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
+          <select
+            value={filtroCliente}
+            onChange={(e) => setFiltroCliente(e.target.value)}
+            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm"
+          >
             <option value="">Todos os Clientes</option>
             {clientes.map(c => <option key={c.id} value={c.id}>{c.cli_nome}</option>)}
           </select>
-          <input type="text" placeholder="Buscar por nome..." value={filtroNome} onChange={(e) => setFiltroNome(e.target.value.toUpperCase())} className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
-          <button
-            onClick={onAddNew}
-            className="w-full md:w-auto px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 whitespace-nowrap"
-          >
+          <input 
+            type="text" 
+            placeholder="Buscar por nome..." 
+            value={filtroNome}
+            onChange={(e) => setFiltroNome(e.target.value.toUpperCase())}
+            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm"
+          />
+          <button onClick={onAddNew} className="w-full md:w-auto px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
             Adicionar Template
           </button>
         </div>
       </div>
 
-      {error && <div className="p-4 text-red-400 bg-red-900/20 border border-red-800 rounded-lg">{error}</div>}
-      
+      {error && <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{error}</div>}
+
       {renderContent()}
 
+      {/* Delete Modal */}
       <Modal isOpen={isDeleteModalOpen} onClose={closeDeleteModal} title="Confirmar Exclusão">
-        <p className="text-gray-300">Tem certeza que deseja excluir o template "{templateForAction?.dre_nome}"? Esta ação também excluirá todas as linhas associadas.</p>
+        <p className="text-gray-300">Tem certeza que deseja excluir o template "{templateForAction?.dre_nome}"? Todas as suas linhas serão removidas permanentemente.</p>
         <div className="flex justify-end pt-6 space-x-2">
           <button type="button" onClick={closeDeleteModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">Cancelar</button>
           <button type="button" onClick={handleDelete} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700">Excluir</button>
         </div>
       </Modal>
-
+      
+      {/* Copy Modal */}
       <Modal isOpen={isCopyModalOpen} onClose={closeCopyModal} title="Copiar Template">
         <div className="space-y-4">
-            <p className="text-gray-300">
-                Criar uma cópia do template <span className="font-bold text-white">"{templateForAction?.dre_nome}"</span>.
-            </p>
+            <p className="text-gray-300">Criar uma cópia de "{templateForAction?.dre_nome}".</p>
             <div>
-                <label htmlFor="new_template_name" className="block text-sm font-medium text-gray-300">
-                    Nome do Novo Template
-                </label>
+                <label htmlFor="newTemplateName" className="block text-sm font-medium text-gray-300">Novo Nome do Template</label>
                 <input
                     type="text"
-                    id="new_template_name"
+                    id="newTemplateName"
                     value={newTemplateName}
                     onChange={(e) => setNewTemplateName(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500"
                     required
-                    className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
                 />
             </div>
-            {error && <p className="text-sm text-red-400">{error}</p>}
-            <div className="flex justify-end pt-4 space-x-2">
-                <button type="button" onClick={closeCopyModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">
-                    Cancelar
-                </button>
-                <button
-                    type="button"
-                    onClick={handleCopy}
-                    disabled={!newTemplateName || loading}
-                    className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:bg-indigo-800 disabled:cursor-not-allowed"
-                >
-                    {loading ? 'Copiando...' : 'Confirmar Cópia'}
-                </button>
+             <div className="flex justify-end pt-4 space-x-2">
+                <button type="button" onClick={closeCopyModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">Cancelar</button>
+                <button type="button" onClick={handleCopy} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">Copiar</button>
             </div>
         </div>
       </Modal>
-
-      <Modal isOpen={isViewModalOpen} onClose={closeViewModal} title={`Visualização: ${templateForAction?.dre_nome || ''}`} size="screen80">
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-            <div className="flex items-center justify-end">
-                <label className="flex items-center space-x-2 text-sm font-medium text-gray-300 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={showVisibleOnly}
-                        onChange={(e) => setShowVisibleOnly(e.target.checked)}
-                        className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500"
-                    />
-                    <span>Mostrar apenas linhas visíveis</span>
-                </label>
-            </div>
-            {isViewLoading && (
-            <div className="flex items-center justify-center p-8">
-                <div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div>
-                <span className="ml-4 text-gray-300">Buscando dados...</span>
-            </div>
-            )}
-            {viewError && (
-            <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{viewError}</div>
-            )}
-            {!isViewLoading && !viewError && filteredViewData.length > 0 && (
-            <div className="overflow-x-auto">
-                <table className="min-w-full text-sm divide-y divide-gray-700">
-                <thead className="bg-gray-700">
-                    <tr>
-                    <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">SEQ</th>
-                    <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Descrição</th>
-                    <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Tipo</th>
-                    <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Valor / Conta / Fórmula</th>
-                    <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Fonte</th>
-                    <th className="px-3 py-2 text-xs font-semibold tracking-wider text-center text-gray-400">Visível</th>
-                    </tr>
-                </thead>
-                <tbody className="bg-gray-800 divide-y divide-gray-700">
-                    {filteredViewData.map(row => (
-                    <tr key={row.dre_linha_seq}>
-                        <td className="px-3 py-2 text-gray-400">{row.dre_linha_seq}</td>
-                        <td className="px-3 py-2 text-white">{row.dre_linha_descri}</td>
-                        <td className="px-3 py-2 text-gray-300">{row.tipo_linha}</td>
-                        <td className="px-3 py-2 text-gray-300">{row.dre_linha_valor_descri}</td>
-                        <td className="px-3 py-2 text-gray-400">{row.dre_linha_valor_fonte || 'N/A'}</td>
-                        <td className="px-3 py-2 text-center">
-                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${row.dre_linha_visivel === 'S' ? 'bg-green-800 text-green-300' : 'bg-red-800 text-red-300'}`}>
-                                {row.dre_linha_visivel === 'S' ? 'Sim' : 'Não'}
-                            </span>
-                        </td>
-                    </tr>
-                    ))}
-                </tbody>
-                </table>
-            </div>
-            )}
+      
+      {/* View Modal */}
+      <Modal isOpen={isViewModalOpen} onClose={closeViewModal} title={`Visualização: ${templateForAction?.dre_nome || ''}`} size="4xl">
+         <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+             {isViewLoading && <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4">Buscando dados...</span></div>}
+             {viewError && <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{viewError}</div>}
+             {!isViewLoading && !viewError && filteredViewData.length > 0 && (
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm divide-y divide-gray-700">
+                        <thead className="bg-gray-700">
+                            <tr>
+                                <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">SEQ</th>
+                                <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Descrição</th>
+                                <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Tipo</th>
+                                <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Valor / Conta / Fórmula</th>
+                                <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Fonte</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-gray-800 divide-y divide-gray-700">
+                            {filteredViewData.map(row => (
+                                <tr key={row.dre_linha_seq}>
+                                    <td className="px-3 py-2 text-gray-400">{row.dre_linha_seq}</td>
+                                    <td className="px-3 py-2 text-white">{row.dre_linha_descri}</td>
+                                    <td className="px-3 py-2 text-gray-300">{row.tipo_linha}</td>
+                                    <td className="px-3 py-2 text-gray-300">{row.dre_linha_valor_descri}</td>
+                                    <td className="px-3 py-2 text-gray-400">{row.dre_linha_valor_fonte || 'N/A'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+             )}
             {!isViewLoading && !viewError && filteredViewData.length === 0 && (
                 <div className="p-6 text-center bg-gray-800/50">
-                    <p className="text-gray-400">{showVisibleOnly ? "Nenhuma linha visível encontrada." : "Nenhum dado retornado para este template."}</p>
+                    <p className="text-gray-400">Nenhum dado retornado para este template.</p>
                 </div>
             )}
-        </div>
-        <div className="flex justify-end pt-4 mt-4 border-t border-gray-700 space-x-2">
-              <button 
+         </div>
+         <div className="flex justify-end pt-4 mt-4 border-t border-gray-700 space-x-2">
+            <button 
                 type="button" 
                 onClick={handleExportPdf} 
                 disabled={filteredViewData.length === 0 || isViewLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-teal-500 disabled:bg-teal-800 disabled:cursor-not-allowed"
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 disabled:bg-teal-800 disabled:cursor-not-allowed"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
+                <i className="fas fa-file-pdf mr-2"></i>
                 Exportar PDF
             </button>
             <button type="button" onClick={closeViewModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">
                 Fechar
             </button>
         </div>
-    </Modal>
+      </Modal>
     </div>
   );
 };
-
-export default TemplateListPage;

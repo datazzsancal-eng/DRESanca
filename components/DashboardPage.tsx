@@ -50,7 +50,7 @@ const Icon = ({ path, className = "h-6 w-6" }: { path: string, className?: strin
 const DashboardIcon = () => <Icon path="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />;
 const VisionIcon = () => <Icon path="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z M15 12a3 3 0 11-6 0 3 3 0 016 0z" />;
 const StructureIcon = () => <Icon path="M8 9l4-4 4 4m0 6l-4 4-4-4" />;
-const SettingsIcon = () => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />;
+const SettingsIcon = () => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826 3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />;
 const AdminIcon = () => <Icon path="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" />;
 const ChevronDownIcon = () => <Icon path="M19 9l-7 7-7-7" className="h-4 w-4" />;
 const ChevronUpIcon = () => <Icon path="M5 15l7-7 7 7" className="h-4 w-4" />;
@@ -547,24 +547,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                       <CsvIcon /> CSV
                     </button>
                   </div>
-                </div>
-                 {/* Verification Section */}
-                <div className="p-2 mt-4 text-xs bg-gray-900/50 border border-dashed border-gray-600 rounded-lg">
-                    <h3 className="mb-1 font-semibold text-gray-400">Valores de Verificação (Debug):</h3>
-                    <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-                        <p className="text-gray-500">
-                            <span className="font-medium text-gray-300">Período Retorno: </span> {selectedPeriod || 'N/A'}
-                        </p>
-                        <p className="text-gray-500">
-                            <span className="font-medium text-gray-300">Período Display: </span> {periods.find(p => p.retorno === selectedPeriod)?.display || 'N/A'}
-                        </p>
-                        <p className="text-gray-500 truncate" title={selectedVisao}>
-                            <span className="font-medium text-gray-300">Visão ID: </span> {selectedVisao || 'N/A'}
-                        </p>
-                        <p className="text-gray-500">
-                            <span className="font-medium text-gray-300">Visão Nome: </span> {visoes.find(v => v.id === selectedVisao)?.vis_nome || 'N/A'}
-                        </p>
-                    </div>
                 </div>
               </div>
               

@@ -280,6 +280,20 @@ interface DreTableProps {
 const DreTable: React.FC<DreTableProps> = ({ data }) => {
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     
+    const formatNumber = (value: number) => {
+        if (value === 0) {
+            return '-';
+        }
+        return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    const formatPercentage = (value: number) => {
+        if (value === 0) {
+            return '-';
+        }
+        return `${value.toFixed(2)}%`;
+    };
+
     return (
         <div className="overflow-x-auto bg-gray-800 border border-gray-700 rounded-lg shadow-md">
             <table className="min-w-full text-sm divide-y divide-gray-700">
@@ -302,10 +316,10 @@ const DreTable: React.FC<DreTableProps> = ({ data }) => {
                             <tr key={index} className="hover:bg-gray-700/50">
                                 <td className={`px-3 py-2 whitespace-nowrap text-gray-300 ${row.isBold ? 'font-bold text-white' : ''}`}>{row.desc}</td>
                                 {values.map((val, i) => (
-                                    <td key={i} className={`px-3 py-2 text-right whitespace-nowrap ${val < 0 ? 'text-red-500' : 'text-gray-200'}`}>{val.toLocaleString('pt-BR')}</td>
+                                    <td key={i} className={`px-3 py-2 text-right whitespace-nowrap ${val < 0 ? 'text-red-500' : 'text-gray-200'}`}>{formatNumber(val)}</td>
                                 ))}
-                                <td className={`px-3 py-2 text-right whitespace-nowrap font-medium ${accumulated < 0 ? 'text-red-500' : 'text-white'}`}>{accumulated.toLocaleString('pt-BR')}</td>
-                                <td className={`px-3 py-2 text-right whitespace-nowrap font-medium text-gray-400`}>{percentage.toFixed(2)}%</td>
+                                <td className={`px-3 py-2 text-right whitespace-nowrap font-medium ${accumulated < 0 ? 'text-red-500' : 'text-white'}`}>{formatNumber(accumulated)}</td>
+                                <td className={`px-3 py-2 text-right whitespace-nowrap font-medium text-gray-400`}>{formatPercentage(percentage)}</td>
                             </tr>
                         );
                     })}

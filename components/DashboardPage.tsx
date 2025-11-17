@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import ClientePage from './cliente/ClientePage';
@@ -82,7 +83,15 @@ interface NavItem {
 
 const navigationData: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
-  { id: 'visao', label: 'Visão', icon: VisionIcon },
+  {
+    id: 'analise-modelos',
+    label: 'Análise & Modelos',
+    icon: VisionIcon,
+    children: [
+      { id: 'visao', label: 'Visões', icon: () => <></> },
+      { id: 'templates', label: 'Templates', icon: () => <></> },
+    ],
+  },
   {
     id: 'estrutura',
     label: 'Estrutura',
@@ -92,7 +101,6 @@ const navigationData: NavItem[] = [
       { id: 'grupo-empresarial', label: 'Grupo Empresarial', icon: () => <></> },
       { id: 'empresa', label: 'Empresa', icon: () => <></> },
       { id: 'plano-contabil', label: 'Plano Contábil', icon: () => <></> },
-      { id: 'templates', label: 'Templates', icon: () => <></> },
     ],
   },
   {
@@ -132,6 +140,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebarOpen, activePage, setActivePage, isCollapsed, onToggleCollapse }) => {
   const [openMenus, setOpenMenus] = useState<{ [key: string]: boolean }>({
+    'analise-modelos': true,
     estrutura: true,
     configuracoes: false,
     administracao: false,

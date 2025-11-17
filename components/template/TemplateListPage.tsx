@@ -34,9 +34,10 @@ interface TemplateViewData {
 interface TemplateListPageProps {
   onEditTemplate: (id: string) => void;
   onAddNew: () => void;
+  onManageCards: (id: string) => void;
 }
 
-export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onAddNew }) => {
+export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onAddNew, onManageCards }) => {
   // State management
   const [templates, setTemplates] = useState<Template[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -322,6 +323,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
                 <td className="px-4 py-2 text-right whitespace-nowrap">
                   <div className="flex items-center justify-end space-x-4">
                     <button onClick={() => openViewModal(template)} className="text-cyan-400 hover:text-cyan-300" title="Visualizar"><i className="fas fa-eye"></i></button>
+                    <button onClick={() => onManageCards(template.id)} className="text-orange-400 hover:text-orange-300" title="Gerenciar Cards"><i className="fa-solid fa-table-cells-large"></i></button>
                     <button onClick={() => onEditTemplate(template.id)} className="text-indigo-400 hover:text-indigo-300" title="Editar"><i className="fas fa-pencil-alt"></i></button>
                     <button onClick={() => openCopyModal(template)} className="text-teal-400 hover:text-teal-300" title="Copiar"><i className="fas fa-copy"></i></button>
                     <button onClick={() => openDeleteModal(template)} className="text-red-500 hover:text-red-400" title="Excluir"><i className="fas fa-trash"></i></button>

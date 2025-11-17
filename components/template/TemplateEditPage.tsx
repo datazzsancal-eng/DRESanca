@@ -193,7 +193,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
               setAccountSearchResults(data || []);
           } catch (err: any) {
               // Silently fail in modal, or show a small error message
-              console.error("Account search error:", err);
+              console.error("Account search error:", err.message || err);
               setAccountSearchResults([]);
           } finally {
               setIsSearchingAccounts(false);

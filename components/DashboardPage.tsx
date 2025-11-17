@@ -1,6 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabaseClient';
 import ClientePage from './cliente/ClientePage';
 import GrupoEmpresarialPage from './grupo-empresarial/GrupoEmpresarialPage';
 import EmpresaPage from './empresa/EmpresaPage';
@@ -12,6 +13,11 @@ import EstiloLinhaPage from './estilo-linha/EstiloLinhaPage';
 import TipoVisaoPage from './tipo-visao/TipoVisaoPage';
 import VisaoPage from './visao/VisaoPage';
 
+// Type definition for period
+interface Periodo {
+  retorno: number;
+  display: string;
+}
 
 // Icons defined as stateless functional components
 const Icon = ({ path, className = "h-6 w-6" }: { path: string, className?: string }) => (
@@ -286,13 +292,61 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   const [dreData, setDreData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+  
+  // State for periods dropdown
+  const [periods, setPeriods] = useState<Periodo[]>([]);
+  const [selectedPeriod, setSelectedPeriod] = useState<number | ''>('');
+  const [periodsLoading, setPeriodsLoading] = useState(true);
 
   useEffect(() => {
-    if (activePage === 'dashboard') {
-      // Use static mock data to prevent Supabase errors
+    const fetchData = async () => {
+      // DRE data (mocked)
+      setLoading(true);
+      setError(null);
+      setWarning(null);
       setDreData(mockDreData); 
       setLoading(false);
-      setError(null);
+
+      // Fetch periods from Supabase view
+      setPeriodsLoading(true);
+      try {
+        const { data, error: periodError } = await supabase
+          .from('viw_periodo_calc')
+          .select('retorno, display')
+          .order('retorno', { ascending: false });
+
+        if (periodError) throw periodError;
+
+        if (data && data.length > 0) {
+          setPeriods(data);
+          setSelectedPeriod(data[0].retorno);
+        } else {
+            throw new Error("Nenhum período foi encontrado na base de dados.");
+        }
+      } catch (err: any) {
+        const errorMessage = err.message || 'Verifique a conexão ou as permissões da view.';
+        console.error("Failed to fetch periods:", err);
+        // Fallback to mock data on error
+        const mockPeriods: Periodo[] = [
+            { retorno: 202408, display: 'AGO/24' },
+            { retorno: 202407, display: 'JUL/24' },
+            { retorno: 202406, display: 'JUN/24' },
+            { retorno: 202405, display: 'MAI/24' },
+            { retorno: 202404, display: 'ABR/24' },
+        ];
+        setPeriods(mockPeriods);
+        if (mockPeriods.length > 0) {
+            setSelectedPeriod(mockPeriods[0].retorno);
+        }
+        setWarning(`Atenção: Não foi possível carregar os períodos (${errorMessage}). Usando dados de exemplo.`);
+      } finally {
+        setPeriodsLoading(false);
+      }
+    };
+    
+    if (activePage === 'dashboard') {
+      fetchData();
     }
   }, [activePage]);
   
@@ -333,6 +387,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         <main className="p-4 space-y-4">
           {activePage === 'dashboard' && (
             <>
+              {warning && <div className="p-3 text-sm text-yellow-400 bg-yellow-900/50 border border-yellow-800 rounded-lg">{warning}</div>}
               {/* Stat Cards */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard title="Receita Líquida" subtitle="Mês Atual" value="R$ 1.5M" percentage="85% da meta" variation={5.2} />
@@ -346,9 +401,19 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                 <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
                   <h2 className="text-lg font-bold text-white">DRE VISÃO CONSOLIDADA</h2>
                   <div className="flex flex-wrap items-center gap-2">
-                    <select className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                      <option>AGO/25</option>
-                      <option>SET/25</option>
+                    <select 
+                      value={selectedPeriod}
+                      onChange={(e) => setSelectedPeriod(Number(e.target.value))}
+                      disabled={periodsLoading || periods.length === 0}
+                      className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                    >
+                      {periodsLoading ? (
+                        <option>Carregando...</option>
+                      ) : periods.length > 0 ? (
+                        periods.map(p => <option key={p.retorno} value={p.retorno}>{p.display}</option>)
+                      ) : (
+                        <option>Sem períodos</option>
+                      )}
                     </select>
                     <select className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
                       <option>Visão Mensal</option>

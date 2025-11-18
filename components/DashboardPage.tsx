@@ -11,6 +11,7 @@ import TipoLinhaPage from './tipo-linha/TipoLinhaPage';
 import EstiloLinhaPage from './estilo-linha/EstiloLinhaPage';
 import TipoVisaoPage from './tipo-visao/TipoVisaoPage';
 import VisaoPage from './visao/VisaoPage';
+import * as XLSX from 'xlsx';
 
 // Type definitions
 interface Periodo {
@@ -56,9 +57,11 @@ const AdminIcon = () => <Icon path="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26
 const ChevronDownIcon = () => <Icon path="M19 9l-7 7-7-7" className="h-4 w-4" />;
 const ChevronUpIcon = () => <Icon path="M5 15l7-7 7 7" className="h-4 w-4" />;
 const LogoutIcon = () => <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />;
-const UserIcon = () => <Icon path="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" className="h-8 w-8 text-gray-400"/>;
+const UserIcon = () => <Icon path="M16 7a4 4 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" className="h-8 w-8 text-gray-400"/>;
 const PdfIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className="h-5 w-5 mr-1" />;
-const CsvIcon = () => <Icon path="M4 6h16M4 10h16M4 14h16M4 18h16" className="h-5 w-5 mr-1" />;
+const CsvIcon = () => <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className="h-5 w-5 mr-1" />;
+const XlsxIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" className="h-5 w-5 mr-1 text-green-500" />;
+
 const MenuIcon = () => <Icon path="M4 6h16M4 12h16M4 18h16" />;
 const CloseIcon = () => <Icon path="M6 18L18 6M6 6l12 12" />;
 const ChevronDoubleLeftIcon = () => <Icon path="M11 17l-5-5 5-5M18 17l-5-5 5-5" className="h-5 w-5"/>;
@@ -520,6 +523,99 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     permissoes: 'Administração - Permissões',
   };
 
+  // --- Helper to generate standardized filenames ---
+  const getExportFileName = (extension: string) => {
+    const visao = visoes.find(v => v.id === selectedVisao);
+    // Removes spaces from vision name as per example (20BARRA9 POA -> 20BARRA9POA)
+    const visaoNome = visao ? visao.vis_nome.replace(/\s+/g, '') : 'DRE';
+    return `${visaoNome}_${selectedPeriod}.${extension}`;
+  }
+
+  // --- Export Handlers ---
+  const handleExportCsv = () => {
+    if (dreData.length === 0) return;
+
+    const fileName = getExportFileName('csv');
+    // Use semicolon for Excel compatibility in regions using comma as decimal separator (like Brazil)
+    const separator = ';';
+    const headers = ["Descrição", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez", "Acumulado", "%"];
+    
+    // Helper to format values for CSV
+    const formatValue = (val: any) => {
+        if (typeof val === 'number') {
+            // Force decimal comma and thousand separator dot, encapsulated in quotes
+            return `"${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}"`;
+        }
+        if (typeof val === 'string') {
+            // Escape double quotes by doubling them
+            return `"${val.replace(/"/g, '""')}"`;
+        }
+        return '""';
+    };
+
+    // Construct rows
+    const csvRows = [headers.map(h => `"${h}"`).join(separator)];
+    
+    dreData.forEach(row => {
+        const values = [
+            formatValue(row.desc),
+            formatValue(row.jan),
+            formatValue(row.fev),
+            formatValue(row.mar),
+            formatValue(row.abr),
+            formatValue(row.mai),
+            formatValue(row.jun),
+            formatValue(row.jul),
+            formatValue(row.ago),
+            formatValue(row.set),
+            formatValue(row.out),
+            formatValue(row.nov),
+            formatValue(row.dez),
+            formatValue(row.accumulated),
+            formatValue(row.percentage)
+        ];
+        csvRows.push(values.join(separator));
+    });
+
+    const csvString = "\uFEFF" + csvRows.join("\n"); // UTF-8 BOM to support accents in Excel
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    
+    // Create temp link to download
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportXlsx = () => {
+     if (dreData.length === 0) return;
+
+     const fileName = getExportFileName('xlsx');
+     
+     const headers = ["Descrição", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez", "Acumulado", "%"];
+     
+     // Map data for SheetJS
+     const dataForSheet = dreData.map(row => [
+        row.desc,
+        row.jan, row.fev, row.mar, row.abr, row.mai, row.jun, 
+        row.jul, row.ago, row.set, row.out, row.nov, row.dez, 
+        row.accumulated, row.percentage
+     ]);
+     
+     // Add header row
+     dataForSheet.unshift(headers as any);
+
+     const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
+     const wb = XLSX.utils.book_new();
+     XLSX.utils.book_append_sheet(wb, ws, "DRE");
+     
+     XLSX.writeFile(wb, fileName);
+  };
+
 
   return (
     <div className="flex h-screen bg-gray-900 text-gray-300">
@@ -598,8 +694,19 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                         <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                           <PdfIcon /> PDF
                         </button>
-                        <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <button 
+                            onClick={handleExportCsv}
+                            disabled={dreData.length === 0}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
                           <CsvIcon /> CSV
+                        </button>
+                        <button 
+                            onClick={handleExportXlsx}
+                            disabled={dreData.length === 0}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <XlsxIcon /> XLSX
                         </button>
                       </div>
                     </div>

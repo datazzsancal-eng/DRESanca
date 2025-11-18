@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import ClientePage from './cliente/ClientePage';
@@ -598,12 +597,26 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
      
      const headers = ["Descrição", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez", "Acumulado", "%"];
      
-     // Map data for SheetJS
+     // Format number helper for XLSX cells
+     const formatNumber = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+     // Map data for SheetJS with formatted strings to match CSV look
      const dataForSheet = dreData.map(row => [
         row.desc,
-        row.jan, row.fev, row.mar, row.abr, row.mai, row.jun, 
-        row.jul, row.ago, row.set, row.out, row.nov, row.dez, 
-        row.accumulated, row.percentage
+        formatNumber(row.jan), 
+        formatNumber(row.fev), 
+        formatNumber(row.mar), 
+        formatNumber(row.abr), 
+        formatNumber(row.mai), 
+        formatNumber(row.jun), 
+        formatNumber(row.jul), 
+        formatNumber(row.ago), 
+        formatNumber(row.set), 
+        formatNumber(row.out), 
+        formatNumber(row.nov), 
+        formatNumber(row.dez), 
+        formatNumber(row.accumulated), 
+        formatNumber(row.percentage)
      ]);
      
      // Add header row

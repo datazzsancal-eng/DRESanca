@@ -288,10 +288,17 @@ const StatCard: React.FC<StatCardProps> = ({ title, subtitle, value, percentage,
 // DreTable Component
 interface DreTableProps {
     data: DreDataRow[];
+    selectedPeriod: number | '';
 }
-const DreTable: React.FC<DreTableProps> = ({ data }) => {
-    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const DreTable: React.FC<DreTableProps> = ({ data, selectedPeriod }) => {
+    const allMonths = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     
+    // Determine valid months based on selectedPeriod (YYYYMM)
+    // If no period selected, show all. If selected, show up to that month.
+    // e.g., 202508 -> show months 0 to 7 (Jan to Ago)
+    const currentMonthIndex = selectedPeriod ? (Number(selectedPeriod) % 100) : 12;
+    const visibleMonths = allMonths.slice(0, currentMonthIndex);
+
     const formatNumber = (value: number) => {
         if (value === 0) {
             return '-';
@@ -312,7 +319,7 @@ const DreTable: React.FC<DreTableProps> = ({ data }) => {
                 <thead className="bg-gray-700">
                     <tr>
                         <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Descrição</th>
-                        {months.map(month => (
+                        {visibleMonths.map(month => (
                             <th key={month} className="px-3 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">{month}</th>
                         ))}
                         <th className="px-3 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">Acumulado</th>
@@ -321,15 +328,19 @@ const DreTable: React.FC<DreTableProps> = ({ data }) => {
                 </thead>
                 <tbody className="bg-gray-800 divide-y divide-gray-700">
                     {data.map((row, index) => {
-                        const values = months.map(m => row[m.toLowerCase() as keyof DreDataRow] as number || 0);
                         const accumulated = row.accumulated || 0;
                         const percentage = row.percentage || 0;
                         return (
                             <tr key={index} className="hover:bg-gray-700/50">
                                 <td className={`px-3 py-2 whitespace-nowrap text-gray-300 ${row.isBold ? 'font-bold text-white' : ''}`}>{row.desc}</td>
-                                {values.map((val, i) => (
-                                    <td key={i} className={`px-3 py-2 text-right whitespace-nowrap ${val < 0 ? 'text-red-500' : 'text-gray-200'}`}>{formatNumber(val)}</td>
-                                ))}
+                                {visibleMonths.map((month) => {
+                                    const val = row[month.toLowerCase() as keyof DreDataRow] as number || 0;
+                                    return (
+                                        <td key={month} className={`px-3 py-2 text-right whitespace-nowrap ${val < 0 ? 'text-red-500' : 'text-gray-200'}`}>
+                                            {formatNumber(val)}
+                                        </td>
+                                    );
+                                })}
                                 <td className={`px-3 py-2 text-right whitespace-nowrap font-medium ${accumulated < 0 ? 'text-red-500' : 'text-white'}`}>{formatNumber(accumulated)}</td>
                                 <td className={`px-3 py-2 text-right whitespace-nowrap font-medium text-gray-400`}>{formatPercentage(percentage)}</td>
                             </tr>
@@ -566,7 +577,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     const fileName = getExportFileName('csv');
     // Use semicolon for Excel compatibility in regions using comma as decimal separator (like Brazil)
     const separator = ';';
-    const headers = ["Descrição", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez", "Acumulado", "%"];
+    
+    const allMonths = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const currentMonthIndex = selectedPeriod ? (Number(selectedPeriod) % 100) : 12;
+    const visibleMonths = allMonths.slice(0, currentMonthIndex);
+    
+    const headers = ["Descrição", ...visibleMonths, "Acumulado", "%"];
     
     // Helper to format values for CSV
     const formatValue = (val: any) => {
@@ -585,20 +601,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     const csvRows = [headers.map(h => `"${h}"`).join(separator)];
     
     dreData.forEach(row => {
+        const monthlyValues = visibleMonths.map(m => {
+            const val = row[m.toLowerCase() as keyof DreDataRow] as number || 0;
+            return formatValue(val);
+        });
+        
         const values = [
             formatValue(row.desc),
-            formatValue(row.jan),
-            formatValue(row.fev),
-            formatValue(row.mar),
-            formatValue(row.abr),
-            formatValue(row.mai),
-            formatValue(row.jun),
-            formatValue(row.jul),
-            formatValue(row.ago),
-            formatValue(row.set),
-            formatValue(row.out),
-            formatValue(row.nov),
-            formatValue(row.dez),
+            ...monthlyValues,
             formatValue(row.accumulated),
             formatValue(row.percentage)
         ];
@@ -624,29 +634,29 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
 
      const fileName = getExportFileName('xlsx');
      
-     const headers = ["Descrição", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez", "Acumulado", "%"];
+     const allMonths = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+     const currentMonthIndex = selectedPeriod ? (Number(selectedPeriod) % 100) : 12;
+     const visibleMonths = allMonths.slice(0, currentMonthIndex);
+
+     const headers = ["Descrição", ...visibleMonths, "Acumulado", "%"];
      
      // Format number helper for XLSX cells
      const formatNumber = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
      // Map data for SheetJS with formatted strings to match CSV look
-     const dataForSheet = dreData.map(row => [
-        row.desc,
-        formatNumber(row.jan), 
-        formatNumber(row.fev), 
-        formatNumber(row.mar), 
-        formatNumber(row.abr), 
-        formatNumber(row.mai), 
-        formatNumber(row.jun), 
-        formatNumber(row.jul), 
-        formatNumber(row.ago), 
-        formatNumber(row.set), 
-        formatNumber(row.out), 
-        formatNumber(row.nov), 
-        formatNumber(row.dez), 
-        formatNumber(row.accumulated), 
-        formatNumber(row.percentage)
-     ]);
+     const dataForSheet = dreData.map(row => {
+        const monthlyValues = visibleMonths.map(m => {
+            const val = row[m.toLowerCase() as keyof DreDataRow] as number || 0;
+            return formatNumber(val);
+        });
+
+        return [
+            row.desc,
+            ...monthlyValues,
+            formatNumber(row.accumulated), 
+            formatNumber(row.percentage)
+        ];
+     });
      
      // Add header row
      dataForSheet.unshift(headers as any);
@@ -760,7 +770,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                 {loading ? (
                     <div className="flex items-center justify-center"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando dados...</span></div>
                 ) : dreData.length > 0 ? (
-                    <DreTable data={dreData} />
+                    <DreTable data={dreData} selectedPeriod={selectedPeriod} />
                 ) : (
                     <div className="text-center text-gray-400">
                         {(!selectedPeriod || !selectedVisao) ? "Selecione os filtros para visualizar os dados." : "Nenhum dado para exibir."}

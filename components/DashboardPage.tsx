@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import ClientePage from './cliente/ClientePage';
@@ -452,7 +453,35 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                 throw new Error("A resposta da API não é um formato válido (array).");
             }
 
-            const visibleData = data.filter((row: any) => row.dre_linha_visivel === 'S');
+            // CRITICAL FIX: Fetch visibility restrictions from Supabase because the Webhook might not return 'visao_id'.
+            // We assume data contains 'id' which maps to 'dre_template_linhas.id'.
+            // If data lacks 'id', this fallback won't work, but basic filtering will apply.
+            
+            const { data: restrictedLines, error: restError } = await supabase
+                .from('dre_template_linhas')
+                .select('id, visao_id')
+                .not('visao_id', 'is', null);
+
+            if (restError) console.warn('Falha ao buscar restrições de visão:', restError);
+            
+            const restrictionMap = new Map<number | string, string>();
+            if (restrictedLines) {
+                restrictedLines.forEach((r: any) => restrictionMap.set(r.id, r.visao_id));
+            }
+
+            const visibleData = data.filter((row: any) => {
+                const isVisible = row.dre_linha_visivel === 'S';
+                
+                // Determine the vision requirement for this row
+                // Priority: 1. Webhook data (if present), 2. Supabase lookup (via row.id)
+                const requiredVisaoId = row.visao_id || restrictionMap.get(row.id);
+                
+                // If no vision is required (null/undefined), it is visible in ALL visions.
+                // If a vision ID is assigned, it MUST match the selectedVisao.
+                const matchesVisao = !requiredVisaoId || String(requiredVisaoId) === String(selectedVisao);
+                
+                return isVisible && matchesVisao;
+            });
 
             const boldRows = [
                 'RECEITA OPERACIONAL BRUTA',

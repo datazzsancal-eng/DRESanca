@@ -29,6 +29,7 @@ interface TemplateViewData {
   dre_linha_valor_descri: string | null;
   dre_linha_valor_fonte: string | null;
   dre_linha_visivel: string;
+  visao_nome?: string | null;
 }
 
 interface TemplateListPageProps {
@@ -55,6 +56,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
   const [viewData, setViewData] = useState<TemplateViewData[]>([]);
   const [isViewLoading, setIsViewLoading] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
+  const [isFallbackView, setIsFallbackView] = useState(false);
 
   // Filter state
   const [filtroCliente, setFiltroCliente] = useState('');
@@ -101,23 +103,70 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
   // Fetch view data when modal is opened
   useEffect(() => {
     const fetchViewData = async () => {
-        if (!isViewModalOpen || !templateForAction || !templateForAction.dre_cont) {
-            if (isViewModalOpen) setViewError("Este template não possui um código de controle para visualização.");
+        if (!isViewModalOpen || !templateForAction) {
             return;
         }
+        
         setIsViewLoading(true);
         setViewError(null);
         setViewData([]);
+        setIsFallbackView(false);
 
         try {
-            const response = await fetch(`https://webhook.moondog-ia.tech/webhook/temp_dre?cntr=${templateForAction.dre_cont}`);
-            if (!response.ok) {
-                throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
+            // Try Webhook first
+            if (templateForAction.dre_cont) {
+                const response = await fetch(`https://webhook.moondog-ia.tech/webhook/temp_dre?cntr=${templateForAction.dre_cont}`);
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    if (text && text.trim().length > 0) {
+                         try {
+                             const data: TemplateViewData[] = JSON.parse(text);
+                             if (Array.isArray(data)) {
+                                 data.sort((a, b) => a.dre_linha_seq - b.dre_linha_seq);
+                                 setViewData(data);
+                                 return; // Success
+                             }
+                         } catch (e) {
+                             console.warn("Webhook returned invalid JSON, trying fallback...");
+                         }
+                    }
+                }
             }
-            const data: TemplateViewData[] = await response.json();
-            data.sort((a, b) => a.dre_linha_seq - b.dre_linha_seq);
-            setViewData(data);
+            
+            // Fallback to Supabase if Webhook fails, returns empty, or no control code
+            console.log("Using Supabase fallback for visualization");
+            const { data: lines, error: dbError } = await supabase
+                .from('dre_template_linhas')
+                .select(`
+                    dre_linha_seq, 
+                    dre_linha_descri, 
+                    dre_linha_valor, 
+                    dre_linha_valor_fonte, 
+                    dre_linha_visivel, 
+                    tab_tipo_linha ( tipo_linha ),
+                    dre_visao ( vis_nome )
+                `)
+                .eq('dre_template_id', templateForAction.id)
+                .order('dre_linha_seq');
+
+            if (dbError) throw dbError;
+
+            const fallbackData: TemplateViewData[] = (lines || []).map((l: any) => ({
+                dre_linha_seq: l.dre_linha_seq,
+                dre_linha_descri: l.dre_linha_descri,
+                tipo_linha: l.tab_tipo_linha?.tipo_linha || '',
+                dre_linha_valor_descri: l.dre_linha_valor, // Show raw value
+                dre_linha_valor_fonte: l.dre_linha_valor_fonte,
+                dre_linha_visivel: l.dre_linha_visivel,
+                visao_nome: l.dre_visao?.vis_nome || null
+            }));
+            
+            setViewData(fallbackData);
+            setIsFallbackView(true);
+
         } catch (err: any) {
+            console.error("View fetch error:", err);
             setViewError(`Falha ao carregar visualização: ${err.message}`);
         } finally {
             setIsViewLoading(false);
@@ -253,7 +302,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
     const title = `Template: ${templateForAction.dre_nome}`;
     doc.text(title, 14, 16);
 
-    const tableColumn = ["SEQ", "Descrição", "Tipo", "Valor / Conta / Fórmula", "Fonte"];
+    const tableColumn = ["SEQ", "Descrição", "Tipo", "Valor / Conta / Fórmula", "Visão", "Fonte"];
     const tableRows: (string | number)[][] = [];
 
     filteredViewData.forEach(item => {
@@ -262,6 +311,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
             item.dre_linha_descri || '',
             item.tipo_linha || '',
             item.dre_linha_valor_descri || '',
+            item.visao_nome || 'Todas',
             item.dre_linha_valor_fonte || 'N/A',
         ];
         tableRows.push(rowData);
@@ -403,6 +453,13 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
              {isViewLoading && <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4">Buscando dados...</span></div>}
              {viewError && <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{viewError}</div>}
+             
+             {isFallbackView && !isViewLoading && !viewError && (
+                 <div className="p-3 mb-4 text-sm text-yellow-300 bg-yellow-900/30 border border-yellow-700 rounded-md">
+                     A visualização processada não está disponível. Exibindo estrutura bruta do banco de dados.
+                 </div>
+             )}
+
              {!isViewLoading && !viewError && filteredViewData.length > 0 && (
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm divide-y divide-gray-700">
@@ -412,6 +469,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
                                 <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Descrição</th>
                                 <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Tipo</th>
                                 <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Valor / Conta / Fórmula</th>
+                                <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Visão</th>
                                 <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Fonte</th>
                             </tr>
                         </thead>
@@ -422,6 +480,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
                                     <td className="px-3 py-2 text-white">{row.dre_linha_descri}</td>
                                     <td className="px-3 py-2 text-gray-300">{row.tipo_linha}</td>
                                     <td className="px-3 py-2 text-gray-300">{row.dre_linha_valor_descri}</td>
+                                    <td className="px-3 py-2 text-gray-300">{row.visao_nome || 'Todas'}</td>
                                     <td className="px-3 py-2 text-gray-400">{row.dre_linha_valor_fonte || 'N/A'}</td>
                                 </tr>
                             ))}

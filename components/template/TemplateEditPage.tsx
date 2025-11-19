@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -10,6 +11,8 @@ interface CnpjRaiz { cnpj_raiz: string; reduz_emp: string | null; }
 interface TipoLinha { id: number; tipo_linha: string | null; }
 interface EstiloLinha { id: number; estilo_nome: string | null; }
 interface PlanoConta { conta_estru: string; conta_descri: string | null; }
+interface Visao { id: string; vis_nome: string | null; }
+
 interface TemplateHeader {
   id?: string;
   cliente_id: string | null;
@@ -30,6 +33,8 @@ interface TemplateLinha {
   dre_linha_visivel: string;
   dre_linha_valor: string | null;
   dre_linha_valor_fonte?: 'VALOR' | 'CONTA' | 'FORMULA' | null;
+  visao_id?: string | null; // Visibilidade condicional
+  perc_ref?: string | null; // Nova coluna
 }
 interface TemplateLinhaForState extends TemplateLinha {
   _internalKey: string | number;
@@ -41,6 +46,7 @@ interface TemplateViewData {
   dre_linha_valor_descri: string | null;
   dre_linha_valor_fonte: string | null;
   dre_linha_visivel: string;
+  visao_nome?: string | null;
 }
 
 
@@ -63,6 +69,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   const [linhasData, setLinhasData] = useState<TemplateLinhaForState[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [cnpjs, setCnpjs] = useState<CnpjRaiz[]>([]);
+  const [visoes, setVisoes] = useState<Visao[]>([]); // Visões disponíveis para o cliente
   const [tiposLinha, setTiposLinha] = useState<TipoLinha[]>([]);
   const [estilosLinha, setEstilosLinha] = useState<EstiloLinha[]>([]);
   const [planoContas, setPlanoContas] = useState<PlanoConta[]>([]);
@@ -76,6 +83,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   const [isViewLoading, setIsViewLoading] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
   const [showVisibleOnly, setShowVisibleOnly] = useState(false);
+  const [isFallbackView, setIsFallbackView] = useState(false);
 
   // Account Search Modal State
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
@@ -138,13 +146,27 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
 
   useEffect(() => { fetchData(); }, [fetchData]);
   
+  // Fetch CNPJs and Visões when Cliente changes
   useEffect(() => {
-    const fetchCnpjs = async () => {
-      if (!headerData.cliente_id) { setCnpjs([]); setPlanoContas([]); return; }
-      const { data, error } = await supabase.from('viw_cnpj_raiz').select('cnpj_raiz, reduz_emp').eq('cliente_id', headerData.cliente_id);
-      if (error) setError(`Falha ao carregar CNPJs: ${error.message}`); else setCnpjs(data || []);
+    const fetchClientData = async () => {
+      if (!headerData.cliente_id) { 
+          setCnpjs([]); 
+          setPlanoContas([]); 
+          setVisoes([]);
+          return; 
+      }
+      
+      // 1. CNPJs
+      const { data: cnpjData, error: cnpjError } = await supabase.from('viw_cnpj_raiz').select('cnpj_raiz, reduz_emp').eq('cliente_id', headerData.cliente_id);
+      if (cnpjError) console.error("Erro ao buscar CNPJs:", cnpjError);
+      setCnpjs(cnpjData || []);
+
+      // 2. Visões (for visibility restriction)
+      const { data: visaoData, error: visaoError } = await supabase.from('dre_visao').select('id, vis_nome').eq('cliente_id', headerData.cliente_id).order('vis_nome');
+      if (visaoError) console.error("Erro ao buscar Visões:", visaoError);
+      setVisoes(visaoData || []);
     };
-    fetchCnpjs();
+    fetchClientData();
   }, [headerData.cliente_id]);
   
   useEffect(() => {
@@ -263,7 +285,9 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
       dre_linha_nivel: 0,
       dre_linha_visivel: 'S',
       dre_linha_valor: '',
-      dre_linha_valor_fonte: null
+      dre_linha_valor_fonte: null,
+      visao_id: null, // Default to null (visible in all visions)
+      perc_ref: '', // Default empty
     };
     setLinhasData(prev => [...prev, newLinha]);
   };
@@ -308,15 +332,63 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
       setIsViewLoading(true);
       setViewError(null);
       setViewData([]);
+      setIsFallbackView(false);
 
       try {
+        // Try Webhook first
         const response = await fetch(`https://webhook.moondog-ia.tech/webhook/temp_dre?cntr=${headerData.dre_cont}`);
-        if (!response.ok) {
-          throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
+        if (response.ok) {
+            const text = await response.text();
+            if (text && text.trim().length > 0) {
+                try {
+                    const data: TemplateViewData[] = JSON.parse(text);
+                    if (Array.isArray(data)) {
+                        data.sort((a, b) => a.dre_linha_seq - b.dre_linha_seq);
+                        setViewData(data);
+                        return; // Success
+                    }
+                } catch (e) {
+                     console.warn("Webhook returned invalid JSON, trying fallback...");
+                }
+            }
         }
-        const data: TemplateViewData[] = await response.json();
-        data.sort((a, b) => a.dre_linha_seq - b.dre_linha_seq);
-        setViewData(data);
+        
+        // Fallback if response not OK or empty or invalid JSON
+        if (templateId === 'new') {
+            // Can't fallback to DB for unsaved template
+             throw new Error("Salve o template para visualizar a estrutura se o webhook estiver indisponível.");
+        }
+        
+        console.log("Using Supabase fallback for visualization");
+        const { data: lines, error: dbError } = await supabase
+            .from('dre_template_linhas')
+            .select(`
+                dre_linha_seq, 
+                dre_linha_descri, 
+                dre_linha_valor, 
+                dre_linha_valor_fonte, 
+                dre_linha_visivel, 
+                tab_tipo_linha ( tipo_linha ),
+                dre_visao ( vis_nome )
+            `)
+            .eq('dre_template_id', templateId)
+            .order('dre_linha_seq');
+
+        if (dbError) throw dbError;
+
+        const fallbackData: TemplateViewData[] = (lines || []).map((l: any) => ({
+            dre_linha_seq: l.dre_linha_seq,
+            dre_linha_descri: l.dre_linha_descri,
+            tipo_linha: l.tab_tipo_linha?.tipo_linha || '',
+            dre_linha_valor_descri: l.dre_linha_valor, // Show raw value
+            dre_linha_valor_fonte: l.dre_linha_valor_fonte,
+            dre_linha_visivel: l.dre_linha_visivel,
+            visao_nome: l.dre_visao?.vis_nome || null
+        }));
+        
+        setViewData(fallbackData);
+        setIsFallbackView(true);
+
       } catch (err: any) {
         setViewError(`Falha ao carregar visualização: ${err.message}`);
       } finally {
@@ -340,7 +412,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
         const title = `Template: ${headerData.dre_nome}`;
         doc.text(title, 14, 16);
 
-        const tableColumn = ["SEQ", "Descrição", "Tipo", "Valor / Conta / Fórmula", "Fonte", "Visível"];
+        const tableColumn = ["SEQ", "Descrição", "Tipo", "Valor / Conta / Fórmula", "Visão", "Fonte", "Visível"];
         const tableRows: (string | number)[][] = [];
 
         filteredViewData.forEach(item => {
@@ -349,6 +421,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                 item.dre_linha_descri || '',
                 item.tipo_linha || '',
                 item.dre_linha_valor_descri || '',
+                item.visao_nome || 'Todas',
                 item.dre_linha_valor_fonte || 'N/A',
                 item.dre_linha_visivel === 'S' ? 'Sim' : 'Não'
             ];
@@ -404,6 +477,8 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                 dre_linha_visivel: linha.dre_linha_visivel,
                 dre_linha_valor: linha.dre_linha_valor,
                 dre_linha_valor_fonte: tipoLinha === 'CONSTANTE' ? (linha.dre_linha_valor_fonte || 'VALOR') : null,
+                visao_id: linha.visao_id || null, // Save condition
+                perc_ref: linha.perc_ref || null, // Save perc_ref
             };
         });
 
@@ -478,6 +553,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
       case 'CONTA':
         return renderContaInput();
       case 'FORMULA':
+      case 'ACUM VLR ANT':
         return renderFormulaInput();
       case 'CONSTANTE':
         const fonte = linha.dre_linha_valor_fonte || 'VALOR';
@@ -564,7 +640,9 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                 <th className="px-2 py-2 text-xs text-left text-gray-400">Nível</th>
                 <th className="px-2 py-2 text-xs text-left text-gray-400 min-w-[120px]">Tipo</th>
                 <th className="px-2 py-2 text-xs text-left text-gray-400 min-w-[150px]">Estilo / Fonte</th>
+                <th className="px-2 py-2 text-xs text-left text-gray-400 w-20">% REF</th>
                 <th className="px-2 py-2 text-xs text-left text-gray-400 min-w-[250px]">Valor / Conta / Fórmula</th>
+                <th className="px-2 py-2 text-xs text-left text-gray-400 min-w-[150px]">Visão Exclusiva</th>
                 <th className="px-2 py-2 text-xs text-center text-gray-400">Visível</th>
                 <th className="px-2 py-2"></th>
               </tr>
@@ -599,7 +677,27 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                       )}
                     </td>
                     <td className="px-1 py-1">
+                        <input 
+                            type="text" 
+                            value={linha.perc_ref || ''} 
+                            onChange={(e) => handleLinhaChange(index, 'perc_ref', e.target.value.toUpperCase())}
+                            className="w-20 px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md" 
+                            maxLength={10}
+                        />
+                    </td>
+                    <td className="px-1 py-1">
                       {renderValorCell(linha, index)}
+                    </td>
+                    <td className="px-1 py-1">
+                        <select 
+                          value={linha.visao_id || ''} 
+                          onChange={(e) => handleLinhaChange(index, 'visao_id', e.target.value || null)} 
+                          disabled={!headerData.cliente_id}
+                          className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md disabled:bg-gray-600"
+                        >
+                            <option value="">Todas (Padrão)</option>
+                            {visoes.map(v => <option key={v.id} value={v.id}>{v.vis_nome}</option>)}
+                        </select>
                     </td>
                     <td className="px-2 py-1 text-center"><input type="checkbox" checked={linha.dre_linha_visivel === 'S'} onChange={(e) => handleLinhaChange(index, 'dre_linha_visivel', e.target.checked ? 'S' : 'N')} className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500" /></td>
                     <td className="px-2 py-1 text-center"><button onClick={() => removeLinha(linha._internalKey)} className="text-red-500 hover:text-red-400"><i className="fas fa-times"></i></button></td>
@@ -670,6 +768,13 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                 {viewError && (
                 <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{viewError}</div>
                 )}
+                
+                {isFallbackView && !isViewLoading && !viewError && (
+                    <div className="p-3 mb-4 text-sm text-yellow-300 bg-yellow-900/30 border border-yellow-700 rounded-md">
+                        A visualização processada não está disponível. Exibindo estrutura bruta do banco de dados.
+                    </div>
+                )}
+
                 {!isViewLoading && !viewError && filteredViewData.length > 0 && (
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm divide-y divide-gray-700">
@@ -679,6 +784,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                         <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Descrição</th>
                         <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Tipo</th>
                         <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Valor / Conta / Fórmula</th>
+                        <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Visão</th>
                         <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Fonte</th>
                         <th className="px-3 py-2 text-xs font-semibold tracking-wider text-center text-gray-400">Visível</th>
                         </tr>
@@ -690,6 +796,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                             <td className="px-3 py-2 text-white">{row.dre_linha_descri}</td>
                             <td className="px-3 py-2 text-gray-300">{row.tipo_linha}</td>
                             <td className="px-3 py-2 text-gray-300">{row.dre_linha_valor_descri}</td>
+                            <td className="px-3 py-2 text-gray-300">{row.visao_nome || 'Todas'}</td>
                             <td className="px-3 py-2 text-gray-400">{row.dre_linha_valor_fonte || 'N/A'}</td>
                             <td className="px-3 py-2 text-center">
                                 <span className={`px-2 py-1 text-xs font-semibold rounded-full ${row.dre_linha_visivel === 'S' ? 'bg-green-800 text-green-300' : 'bg-red-800 text-red-300'}`}>

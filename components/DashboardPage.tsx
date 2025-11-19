@@ -310,7 +310,7 @@ const DreTable: React.FC<DreTableProps> = ({ data, selectedPeriod }) => {
         if (value === 0) {
             return '-';
         }
-        return `${value.toFixed(2)}%`;
+        return `${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
     };
 
     return (

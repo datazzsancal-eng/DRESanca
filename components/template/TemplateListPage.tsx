@@ -2,9 +2,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
-
-// Type definitions
-declare const jspdf: any;
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
 
 interface Cliente {
   id: string;
@@ -296,8 +295,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
   const handleExportPdf = () => {
     if (!templateForAction?.dre_nome || filteredViewData.length === 0) return;
 
-    const { jsPDF } = jspdf;
-    const doc = new jsPDF();
+    const doc: any = new jsPDF();
 
     const title = `Template: ${templateForAction.dre_nome}`;
     doc.text(title, 14, 16);

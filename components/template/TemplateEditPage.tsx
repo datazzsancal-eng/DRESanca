@@ -2,9 +2,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
-
-// Type definitions
-declare const jspdf: any;
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
 
 interface Cliente { id: string; cli_nome: string | null; }
 interface CnpjRaiz { cnpj_raiz: string; reduz_emp: string | null; }
@@ -414,8 +413,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
     const handleExportPdf = () => {
         if (!headerData.dre_nome || filteredViewData.length === 0) return;
 
-        const { jsPDF } = jspdf;
-        const doc = new jsPDF();
+        const doc: any = new jsPDF();
 
         const title = `Template: ${headerData.dre_nome}`;
         doc.text(title, 14, 16);

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -92,7 +93,8 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
 
       const { data, error } = await query;
       if (error) throw error;
-      setVisoes(data as Visao[] || []);
+      // Cast to unknown first to avoid TS error about incompatible types (TS infers arrays for joined props)
+      setVisoes((data as unknown as Visao[]) || []);
     } catch (err: any) {
       setError(`Falha ao carregar dados: ${err.message}`);
     } finally {

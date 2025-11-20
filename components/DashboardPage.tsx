@@ -609,8 +609,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         const values = [
             formatValue(row.desc),
             ...monthlyValues,
-            formatValue(row.accumulated),
-            formatValue(row.percentage)
+            formatValue(row.accumulated || 0),
+            formatValue(row.percentage || 0)
         ];
         csvRows.push(values.join(separator));
     });
@@ -641,9 +641,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
      const headers = ["Descrição", ...visibleMonths, "Acumulado", "%"];
      
      // Format number helper for XLSX cells
-     const formatNumber = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+     const formatNumber = (val: number | null | undefined) => (val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+     const formatPercentage = (val: number | null | undefined) => `${(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 
-     // Map data for SheetJS with formatted strings to match CSV look
+     // Map data for SheetJS with formatted strings to match CSV look and Screen look
      const dataForSheet = dreData.map(row => {
         const monthlyValues = visibleMonths.map(m => {
             const val = row[m.toLowerCase() as keyof DreDataRow] as number || 0;
@@ -654,7 +655,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
             row.desc,
             ...monthlyValues,
             formatNumber(row.accumulated), 
-            formatNumber(row.percentage)
+            formatPercentage(row.percentage)
         ];
      });
      
@@ -662,6 +663,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
      dataForSheet.unshift(headers as any);
 
      const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
+     
+     // Adjust column widths for better readability
+     const wscols = [
+        { wch: 40 }, // Descrição
+        ...visibleMonths.map(() => ({ wch: 15 })), // Months
+        { wch: 18 }, // Acumulado
+        { wch: 10 }  // %
+     ];
+     ws['!cols'] = wscols;
+
      const wb = XLSX.utils.book_new();
      XLSX.utils.book_append_sheet(wb, ws, "DRE");
      

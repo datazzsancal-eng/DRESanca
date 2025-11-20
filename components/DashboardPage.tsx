@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import ClientePage from './cliente/ClientePage';
 import GrupoEmpresarialPage from './grupo-empresarial/GrupoEmpresarialPage';
@@ -41,7 +41,10 @@ interface DreDataRow {
     dez: number;
     accumulated: number;
     percentage: number;
+    // Styling properties
     isBold: boolean;
+    isItalic: boolean;
+    indentationLevel: number;
 }
 
 interface CardConfig {
@@ -51,6 +54,12 @@ interface CardConfig {
     dre_linha_seq: number | null;
     vlr_linha_01: 'ACUM' | 'PERC';
     vlr_linha_02: 'ACUM' | 'PERC';
+}
+
+interface LineStyle {
+    seq: number;
+    tipografia: 'NORMAL' | 'NEGRITO' | 'ITALICO' | 'NEGR/ITAL' | null;
+    indentacao: number;
 }
 
 
@@ -305,22 +314,16 @@ const DreTable: React.FC<DreTableProps> = ({ data, selectedPeriod }) => {
     const allMonths = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     
     // Determine valid months based on selectedPeriod (YYYYMM)
-    // If no period selected, show all. If selected, show up to that month.
-    // e.g., 202508 -> show months 0 to 7 (Jan to Ago)
     const currentMonthIndex = selectedPeriod ? (Number(selectedPeriod) % 100) : 12;
     const visibleMonths = allMonths.slice(0, currentMonthIndex);
 
     const formatNumber = (value: number) => {
-        if (value === 0) {
-            return '-';
-        }
+        if (value === 0) return '-';
         return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
     const formatPercentage = (value: number) => {
-        if (value === 0) {
-            return '-';
-        }
+        if (value === 0) return '-';
         return `${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
     };
 
@@ -341,9 +344,24 @@ const DreTable: React.FC<DreTableProps> = ({ data, selectedPeriod }) => {
                     {data.map((row, index) => {
                         const accumulated = row.accumulated || 0;
                         const percentage = row.percentage || 0;
+                        
+                        // Dynamic Styles
+                        const fontWeight = row.isBold ? 'bold' : 'normal';
+                        const fontStyle = row.isItalic ? 'italic' : 'normal';
+                        const paddingLeft = row.indentationLevel ? `${row.indentationLevel * 2}ch` : '0.75rem'; // 0.75rem is roughly 12px (px-3)
+
                         return (
                             <tr key={index} className="hover:bg-gray-700/50">
-                                <td className={`px-3 py-2 whitespace-nowrap text-gray-300 ${row.isBold ? 'font-bold text-white' : ''}`}>{row.desc}</td>
+                                <td 
+                                    className="px-3 py-2 whitespace-nowrap text-gray-300"
+                                    style={{ 
+                                        fontWeight, 
+                                        fontStyle, 
+                                        paddingLeft 
+                                    }}
+                                >
+                                    {row.desc}
+                                </td>
                                 {visibleMonths.map((month) => {
                                     const val = row[month.toLowerCase() as keyof DreDataRow] as number || 0;
                                     return (
@@ -372,7 +390,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState('dashboard');
-  const [dreData, setDreData] = useState<DreDataRow[]>([]);
+  
+  const [rawDreData, setRawDreData] = useState<any[]>([]); // Data from Webhook
+  const [dreData, setDreData] = useState<DreDataRow[]>([]); // Formatted data for table
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -387,8 +408,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   const [selectedVisao, setSelectedVisao] = useState<string>('');
   const [visoesLoading, setVisoesLoading] = useState(true);
 
-  // State for dynamic cards
+  // State for dynamic cards and styles
   const [cardConfigs, setCardConfigs] = useState<CardConfig[]>([]);
+  const [lineStyles, setLineStyles] = useState<Map<number, LineStyle>>(new Map());
 
   // Fetch dropdown data on mount
   useEffect(() => {
@@ -451,11 +473,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     }
   }, [activePage]);
   
-  // Fetch Card Configurations when selectedVisao changes
+  // Fetch Template Configurations (Cards and Line Styles) when selectedVisao changes
   useEffect(() => {
-    const fetchCardConfigs = async () => {
+    const fetchTemplateConfig = async () => {
         if (!selectedVisao) {
             setCardConfigs([]);
+            setLineStyles(new Map());
             return;
         }
         
@@ -464,11 +487,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
             const visao = visoes.find(v => v.id === selectedVisao);
             if (!visao || !visao.cliente_id) {
                  setCardConfigs([]);
+                 setLineStyles(new Map());
                  return;
             }
 
             // 2. Find the ACTIVE template for this client
-            // Assuming there is only one active template per client for the dashboard
             const { data: template, error: templateError } = await supabase
                 .from('dre_template')
                 .select('id')
@@ -480,10 +503,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
             if (templateError || !template) {
                 console.warn("Nenhum template ativo encontrado para o cliente desta visão.");
                 setCardConfigs([]);
+                setLineStyles(new Map());
                 return;
             }
 
-            // 3. Fetch the card configurations for this template
+            // 3. Fetch the card configurations
             const { data: cards, error: cardsError } = await supabase
                 .from('dre_template_card')
                 .select('*')
@@ -496,20 +520,52 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                 setCardConfigs(cards || []);
             }
 
+            // 4. Fetch Line Styles (joined with tab_estilo_linha)
+            const { data: lines, error: linesError } = await supabase
+                .from('dre_template_linhas')
+                .select(`
+                    dre_linha_seq,
+                    tab_estilo_linha (
+                        est_tipg_tela,
+                        est_nivel_ident
+                    )
+                `)
+                .eq('dre_template_id', template.id);
+
+            if (linesError) {
+                console.error("Erro ao buscar estilos das linhas:", linesError);
+                setLineStyles(new Map());
+            } else if (lines) {
+                const styleMap = new Map<number, LineStyle>();
+                lines.forEach((line: any) => {
+                     const estilo = line.tab_estilo_linha;
+                     if (estilo) {
+                         styleMap.set(line.dre_linha_seq, {
+                             seq: line.dre_linha_seq,
+                             tipografia: estilo.est_tipg_tela,
+                             indentacao: estilo.est_nivel_ident || 0
+                         });
+                     }
+                });
+                setLineStyles(styleMap);
+            }
+
         } catch (err) {
-            console.error("Erro no fluxo de busca de cards:", err);
+            console.error("Erro no fluxo de busca de configuração do template:", err);
             setCardConfigs([]);
+            setLineStyles(new Map());
         }
     };
 
-    fetchCardConfigs();
+    fetchTemplateConfig();
   }, [selectedVisao, visoes]);
 
 
-  // Fetch DRE data when filters change
+  // Fetch Raw DRE data when filters change
   useEffect(() => {
-    const fetchDreData = async () => {
+    const fetchRawData = async () => {
         if (activePage !== 'dashboard' || !selectedVisao || !selectedPeriod) {
+            setRawDreData([]);
             setDreData([]);
             return;
         }
@@ -532,52 +588,61 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
             if (!Array.isArray(data)) {
                 throw new Error("A resposta da API não é um formato válido (array).");
             }
-
-            // CRITICAL FIX: Fetch visibility restrictions from Supabase because the Webhook might not return 'visao_id'.
-            // We assume data contains 'id' which maps to 'dre_template_linhas.id'.
-            // If data lacks 'id', this fallback won't work, but basic filtering will apply.
+            setRawDreData(data);
             
-            const { data: restrictedLines, error: restError } = await supabase
-                .from('dre_template_linhas')
-                .select('id, visao_id')
-                .not('visao_id', 'is', null);
-
-            if (restError) console.warn('Falha ao buscar restrições de visão:', restError);
-            
-            const restrictionMap = new Map<number | string, string>();
-            if (restrictedLines) {
-                restrictedLines.forEach((r: any) => restrictionMap.set(r.id, r.visao_id));
+            if (data.length === 0) {
+                setWarning("Nenhum dado encontrado para os filtros selecionados.")
             }
 
-            const visibleData = data.filter((row: any) => {
-                const isVisible = row.dre_linha_visivel === 'S';
-                
-                // Determine the vision requirement for this row
-                // Priority: 1. Webhook data (if present), 2. Supabase lookup (via row.id)
-                const requiredVisaoId = row.visao_id || restrictionMap.get(row.id);
-                
-                // If no vision is required (null/undefined), it is visible in ALL visions.
-                // If a vision ID is assigned, it MUST match the selectedVisao.
-                const matchesVisao = !requiredVisaoId || String(requiredVisaoId) === String(selectedVisao);
-                
-                return isVisible && matchesVisao;
-            });
+        } catch (err: any) {
+            console.error("Failed to fetch DRE data from webhook:", err);
+            setError(`Falha ao carregar dados do DRE: ${err.message}. Verifique o endpoint da API.`);
+            setRawDreData([]);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-            const boldRows = [
-                'RECEITA OPERACIONAL BRUTA',
-                '(-)DEDUÇÕES RECEITA OPERACIONAL BRUTA',
-                'RECEITA OPERACIONAL LÍQUIDA',
-                'CUSTO MERCADORIAS VENDIDOS',
-                'LUCRO/PREJUÍZO OPERACIONAL BRUTO',
-                'DESPESAS COM RECURSOS HUMANOS',
-                'DESPESAS COMERCIAIS EM GERAL',
-                'RESULTADO ANTES DO IRPJ /CSLL',
-                'LUCRO LÍQUIDO MENSAL APÓS IRPJ / CSLL / SIMPLES',
-                'EBIT',
-                'EBITDA'
-            ];
-            const formattedData: DreDataRow[] = visibleData.map((row: any) => ({
-                seq: row.dre_linha_seq, // Capture sequence for card mapping
+    fetchRawData();
+  }, [activePage, selectedVisao, selectedPeriod]);
+
+  // Process Raw Data into Display Data (Formatted) when Raw Data or Styles change
+  useEffect(() => {
+    const processDisplayData = async () => {
+        if (rawDreData.length === 0) {
+            setDreData([]);
+            return;
+        }
+        
+        // Fetch visibility restrictions (can be cached or fetched once, but doing here for simplicity/safety)
+        // If this proves slow, we can move it up.
+        const { data: restrictedLines, error: restError } = await supabase
+            .from('dre_template_linhas')
+            .select('id, visao_id')
+            .not('visao_id', 'is', null);
+
+        const restrictionMap = new Map<number | string, string>();
+        if (restrictedLines) {
+            restrictedLines.forEach((r: any) => restrictionMap.set(r.id, r.visao_id));
+        }
+
+        const visibleData = rawDreData.filter((row: any) => {
+            const isVisible = row.dre_linha_visivel === 'S';
+            const requiredVisaoId = row.visao_id || restrictionMap.get(row.id);
+            const matchesVisao = !requiredVisaoId || String(requiredVisaoId) === String(selectedVisao);
+            return isVisible && matchesVisao;
+        });
+
+        const formattedData: DreDataRow[] = visibleData.map((row: any) => {
+            const seq = row.dre_linha_seq;
+            const style = lineStyles.get(seq);
+            
+            const isBold = style?.tipografia === 'NEGRITO' || style?.tipografia === 'NEGR/ITAL';
+            const isItalic = style?.tipografia === 'ITALICO' || style?.tipografia === 'NEGR/ITAL';
+            const indentationLevel = style?.indentacao || 0;
+
+            return {
+                seq: seq, 
                 desc: row.dre_linha_descri,
                 jan: row.conta_janeiro,
                 fev: row.conta_fevereiro,
@@ -593,27 +658,17 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                 dez: row.conta_dezembro,
                 accumulated: row.conta_acumulado,
                 percentage: row.conta_perc,
-                isBold: boldRows.includes(row.dre_linha_descri?.toUpperCase())
-            }));
-            
-            setDreData(formattedData);
-            if (formattedData.length === 0) {
-                setWarning("Nenhum dado encontrado para os filtros selecionados.")
-            } else {
-                setWarning(null);
-            }
-
-        } catch (err: any) {
-            console.error("Failed to fetch DRE data from webhook:", err);
-            setError(`Falha ao carregar dados do DRE: ${err.message}. Verifique o endpoint da API.`);
-            setDreData([]);
-        } finally {
-            setLoading(false);
-        }
+                isBold,
+                isItalic,
+                indentationLevel
+            };
+        });
+        
+        setDreData(formattedData);
     };
 
-    fetchDreData();
-  }, [activePage, selectedVisao, selectedPeriod]);
+    processDisplayData();
+  }, [rawDreData, selectedVisao, lineStyles]);
 
   
   const pageTitles: { [key: string]: string } = {
@@ -635,7 +690,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   // --- Helper to generate standardized filenames ---
   const getExportFileName = (extension: string) => {
     const visao = visoes.find(v => v.id === selectedVisao);
-    // Removes spaces from vision name as per example (20BARRA9 POA -> 20BARRA9POA)
     const visaoNome = visao ? visao.vis_nome.replace(/\s+/g, '') : 'DRE';
     return `${visaoNome}_${selectedPeriod}.${extension}`;
   }
@@ -645,7 +699,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     if (dreData.length === 0) return;
 
     const fileName = getExportFileName('csv');
-    // Use semicolon for Excel compatibility in regions using comma as decimal separator (like Brazil)
     const separator = ';';
     
     const allMonths = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
@@ -654,14 +707,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     
     const headers = ["Descrição", ...visibleMonths, "Acumulado", "%"];
     
-    // Helper to format values for CSV
     const formatValue = (val: any) => {
         if (typeof val === 'number') {
-            // Force decimal comma and thousand separator dot, encapsulated in quotes
             return `"${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}"`;
         }
         if (typeof val === 'string') {
-            // Escape double quotes by doubling them
             return `"${val.replace(/"/g, '""')}"`;
         }
         if (val === null || val === undefined) {
@@ -670,7 +720,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         return '""';
     };
 
-    // Construct rows
     const csvRows = [headers.map(h => `"${h}"`).join(separator)];
     
     dreData.forEach(row => {
@@ -688,11 +737,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         csvRows.push(values.join(separator));
     });
 
-    const csvString = "\uFEFF" + csvRows.join("\n"); // UTF-8 BOM to support accents in Excel
+    const csvString = "\uFEFF" + csvRows.join("\n");
     const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     
-    // Create temp link to download
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
     link.setAttribute("download", fileName);
@@ -713,11 +761,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
 
      const headers = ["Descrição", ...visibleMonths, "Acumulado", "%"];
      
-     // Format number helper for XLSX cells
      const formatNumber = (val: number | null | undefined) => (val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
      const formatPercentage = (val: number | null | undefined) => `${(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 
-     // Map data for SheetJS with formatted strings to match CSV look and Screen look
      const dataForSheet = dreData.map(row => {
         const monthlyValues = visibleMonths.map(m => {
             const val = row[m.toLowerCase() as keyof DreDataRow] as number || 0;
@@ -732,12 +778,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         ];
      });
      
-     // Add header row
      dataForSheet.unshift(headers as any);
 
      const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
      
-     // Adjust column widths for better readability
      const wscols = [
         { wch: 40 }, // Descrição
         ...visibleMonths.map(() => ({ wch: 15 })), // Months
@@ -764,7 +808,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
           };
       }
 
-      // Find the data row based on seq
+      // Find the data row based on seq (use dreData because it's already formatted/filtered, but logic here relies on raw values usually found in rawDreData or DreData)
+      // Since DreDataRow has the raw values, we can use dreData.
       const row = dreData.find(r => r.seq === config.dre_linha_seq);
       if (!row) {
            return {
@@ -791,11 +836,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
          : `${rawVal2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 
       // Calculate Variation (Current Month vs Previous Month)
-      // We need to identify the month columns from the selected period.
-      // selectedPeriod is YYYYMM e.g. 202508.
-      // Month Index: 8. Array Index (0-based): 7 -> 'ago'.
-      // Prev Month Index: 7. Array Index: 6 -> 'jul'.
-      
       let variation = 0;
       if (selectedPeriod) {
           const monthIndex = (Number(selectedPeriod) % 100); // 1-12
@@ -810,7 +850,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                if (prevVal !== 0) {
                    variation = ((currentVal - prevVal) / Math.abs(prevVal)) * 100;
                } else if (currentVal !== 0) {
-                   variation = 100; // 0 to something is 100% growth technically (or infinite)
+                   variation = 100; 
                }
           }
       }

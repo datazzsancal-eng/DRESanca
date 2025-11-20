@@ -95,7 +95,15 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
 
-  const tiposLinhaMap = useMemo(() => new Map(tiposLinha.map(t => [t.id, t.tipo_linha?.toUpperCase()])), [tiposLinha]);
+  const tiposLinhaMap = useMemo(() => {
+      const map = new Map<number, string>();
+      tiposLinha.forEach(t => {
+          if (t.tipo_linha) {
+              map.set(t.id, t.tipo_linha.toUpperCase());
+          }
+      });
+      return map;
+  }, [tiposLinha]);
   
   const planoContasMap = useMemo(() => {
     return new Map(planoContas.map(acc => [acc.conta_estru, acc.conta_descri]));
@@ -459,15 +467,44 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
       
       if (!currentTemplateId) throw new Error("Não foi possível obter o ID do template.");
 
-      // Step 2: Delete existing lines
-      const { error: deleteError } = await supabase.from('dre_template_linhas').delete().eq('dre_template_id', currentTemplateId);
-      if (deleteError) throw deleteError;
+      // Step 2: Manage Lines (Upsert + Selective Delete) to avoid FK constraint errors
       
-      // Step 3: Prepare and insert new lines
+      // A. Get IDs of lines currently in the database
+      const { data: existingLines, error: fetchLinesError } = await supabase
+        .from('dre_template_linhas')
+        .select('id')
+        .eq('dre_template_id', currentTemplateId);
+
+      if (fetchLinesError) throw fetchLinesError;
+
+      const existingIds = new Set(existingLines?.map(l => l.id));
+      // Get IDs present in the form state
+      const incomingIds = new Set(linhasData.map(l => l.id).filter(id => id !== undefined));
+
+      // B. Identify IDs that were removed by the user
+      const idsToDelete = [...existingIds].filter(id => !incomingIds.has(id));
+
+      // C. Delete removed lines (if any)
+      if (idsToDelete.length > 0) {
+         const { error: deleteError } = await supabase
+            .from('dre_template_linhas')
+            .delete()
+            .in('id', idsToDelete);
+         
+         if (deleteError) {
+            // Friendly error message for FK violation
+            if (deleteError.code === '23503') {
+                 throw new Error("Não é possível excluir linhas que estão associadas a Cards do Dashboard. Por favor, remova o vínculo nos cards antes de excluir a linha.");
+            }
+            throw deleteError;
+         }
+      }
+      
+      // D. Upsert current lines (Update existing + Insert new)
       if (linhasData.length > 0) {
         const linhasPayload = linhasData.map((linha, index) => {
-            const tipoLinha = tiposLinhaMap.get(linha.tipo_linha_id as number);
-            return {
+            const tipoLinha = tiposLinhaMap.get(Number(linha.tipo_linha_id));
+            const payload: any = {
                 dre_template_id: currentTemplateId,
                 dre_linha_seq: index + 1,
                 tipo_linha_id: linha.tipo_linha_id,
@@ -477,14 +514,26 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                 dre_linha_visivel: linha.dre_linha_visivel,
                 dre_linha_valor: linha.dre_linha_valor,
                 dre_linha_valor_fonte: tipoLinha === 'CONSTANTE' ? (linha.dre_linha_valor_fonte || 'VALOR') : null,
-                visao_id: linha.visao_id || null, // Save condition
-                perc_ref: linha.perc_ref || null, // Save perc_ref
+                visao_id: linha.visao_id || null,
+                perc_ref: linha.perc_ref || null,
             };
+
+            // If it has an ID, include it to trigger an UPDATE
+            if (linha.id) {
+                payload.id = linha.id;
+            }
+            // If no ID, Supabase will treat it as an INSERT
+            
+            return payload;
         });
 
-        const { error: insertError } = await supabase.from('dre_template_linhas').insert(linhasPayload);
-        if (insertError) throw insertError;
+        const { error: upsertError } = await supabase
+            .from('dre_template_linhas')
+            .upsert(linhasPayload); // upsert works based on PK (id)
+
+        if (upsertError) throw upsertError;
       }
+      
       onBack();
     } catch (err: any) {
         console.error("Save error:", err);
@@ -516,7 +565,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   );
   
   const renderValorCell = (linha: TemplateLinhaForState, index: number) => {
-    const tipo = tiposLinhaMap.get(linha.tipo_linha_id as number);
+    const tipo = linha.tipo_linha_id ? tiposLinhaMap.get(linha.tipo_linha_id) : undefined;
     const isDisabled = !headerData.cliente_cnpj;
 
     const renderContaInput = () => {
@@ -649,7 +698,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
             </thead>
             <tbody className="bg-gray-800 divide-y divide-gray-700">
               {linhasData.map((linha, index) => {
-                const isConstant = tiposLinhaMap.get(linha.tipo_linha_id as number) === 'CONSTANTE';
+                const isConstant = linha.tipo_linha_id && tiposLinhaMap.get(linha.tipo_linha_id) === 'CONSTANTE';
                 return (
                   <tr key={linha._internalKey} draggable onDragStart={() => dragItem.current = index} onDragEnter={() => dragOverItem.current = index} onDragEnd={handleDragSort} onDragOver={(e) => e.preventDefault()} className="hover:bg-gray-700/50 cursor-move">
                     <td className="px-2 py-1 text-center text-gray-500">☰</td>

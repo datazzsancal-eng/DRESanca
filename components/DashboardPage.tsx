@@ -22,8 +22,10 @@ interface Visao {
   id: string;
   vis_nome: string;
   vis_descri: string | null;
+  cliente_id?: string | null; 
 }
 interface DreDataRow {
+    seq: number; // dre_linha_seq
     desc: string;
     jan: number;
     fev: number;
@@ -40,6 +42,15 @@ interface DreDataRow {
     accumulated: number;
     percentage: number;
     isBold: boolean;
+}
+
+interface CardConfig {
+    id: number;
+    crd_posicao: number;
+    tit_card_ajust: string | null;
+    dre_linha_seq: number | null;
+    vlr_linha_01: 'ACUM' | 'PERC';
+    vlr_linha_02: 'ACUM' | 'PERC';
 }
 
 
@@ -271,15 +282,15 @@ const StatCard: React.FC<StatCardProps> = ({ title, subtitle, value, percentage,
   return (
     <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-gray-400">{title}</p>
-        <p className="text-xs text-gray-500">{subtitle}</p>
+        <p className="text-sm font-medium text-gray-400 truncate" title={title}>{title}</p>
       </div>
       <div className="mt-2">
-        <h3 className="text-2xl font-bold text-white">{value}</h3>
-        <p className="text-sm text-gray-400">{percentage}</p>
+        <h3 className="text-2xl font-bold text-white truncate">{value}</h3>
+        <p className="text-sm text-gray-400 truncate">{percentage}</p>
       </div>
       <div className={`text-xs font-semibold text-right mt-2 ${variationColor}`}>
-        {isPositive ? '▲' : '▼'} {Math.abs(variation)}%
+        {isPositive ? '▲' : '▼'} {Math.abs(variation).toFixed(2)}%
+        <span className="text-gray-500 ml-1 font-normal">{subtitle}</span>
       </div>
     </div>
   );
@@ -376,6 +387,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   const [selectedVisao, setSelectedVisao] = useState<string>('');
   const [visoesLoading, setVisoesLoading] = useState(true);
 
+  // State for dynamic cards
+  const [cardConfigs, setCardConfigs] = useState<CardConfig[]>([]);
+
   // Fetch dropdown data on mount
   useEffect(() => {
     const fetchDropdownData = async () => {
@@ -408,7 +422,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
       try {
           const { data, error: visaoError } = await supabase
             .from('dre_visao')
-            .select('id, vis_nome, vis_descri')
+            .select('id, vis_nome, vis_descri, cliente_id')
             .order('vis_nome');
           if (visaoError) throw visaoError;
           if (data && data.length > 0) {
@@ -436,6 +450,61 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         fetchDropdownData();
     }
   }, [activePage]);
+  
+  // Fetch Card Configurations when selectedVisao changes
+  useEffect(() => {
+    const fetchCardConfigs = async () => {
+        if (!selectedVisao) {
+            setCardConfigs([]);
+            return;
+        }
+        
+        try {
+            // 1. Find the Client ID associated with the selected View
+            const visao = visoes.find(v => v.id === selectedVisao);
+            if (!visao || !visao.cliente_id) {
+                 setCardConfigs([]);
+                 return;
+            }
+
+            // 2. Find the ACTIVE template for this client
+            // Assuming there is only one active template per client for the dashboard
+            const { data: template, error: templateError } = await supabase
+                .from('dre_template')
+                .select('id')
+                .eq('cliente_id', visao.cliente_id)
+                .eq('dre_ativo_sn', 'S')
+                .limit(1)
+                .single();
+            
+            if (templateError || !template) {
+                console.warn("Nenhum template ativo encontrado para o cliente desta visão.");
+                setCardConfigs([]);
+                return;
+            }
+
+            // 3. Fetch the card configurations for this template
+            const { data: cards, error: cardsError } = await supabase
+                .from('dre_template_card')
+                .select('*')
+                .eq('dre_template_id', template.id);
+            
+            if (cardsError) {
+                console.error("Erro ao buscar configurações dos cards:", cardsError);
+                setCardConfigs([]);
+            } else {
+                setCardConfigs(cards || []);
+            }
+
+        } catch (err) {
+            console.error("Erro no fluxo de busca de cards:", err);
+            setCardConfigs([]);
+        }
+    };
+
+    fetchCardConfigs();
+  }, [selectedVisao, visoes]);
+
 
   // Fetch DRE data when filters change
   useEffect(() => {
@@ -508,6 +577,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                 'EBITDA'
             ];
             const formattedData: DreDataRow[] = visibleData.map((row: any) => ({
+                seq: row.dre_linha_seq, // Capture sequence for card mapping
                 desc: row.dre_linha_descri,
                 jan: row.conta_janeiro,
                 fev: row.conta_fevereiro,
@@ -594,6 +664,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
             // Escape double quotes by doubling them
             return `"${val.replace(/"/g, '""')}"`;
         }
+        if (val === null || val === undefined) {
+             return '""';
+        }
         return '""';
     };
 
@@ -679,6 +752,78 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
      XLSX.writeFile(wb, fileName);
   };
 
+  const processCardData = (posicao: number) => {
+      const config = cardConfigs.find(c => c.crd_posicao === posicao);
+      if (!config || !config.dre_linha_seq) {
+          return {
+              title: `Card ${posicao}`,
+              subtitle: 'Não configurado',
+              value: '-',
+              percentage: '-',
+              variation: 0
+          };
+      }
+
+      // Find the data row based on seq
+      const row = dreData.find(r => r.seq === config.dre_linha_seq);
+      if (!row) {
+           return {
+              title: config.tit_card_ajust || `Card ${posicao}`,
+              subtitle: 'Sem dados',
+              value: '-',
+              percentage: '-',
+              variation: 0
+          };
+      }
+
+      // Format Value 1
+      const val1Type = config.vlr_linha_01;
+      const rawVal1 = val1Type === 'ACUM' ? (row.accumulated || 0) : (row.percentage || 0);
+      const formattedVal1 = val1Type === 'ACUM' 
+        ? `R$ ${rawVal1.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2, notation: "compact" })}`
+        : `${rawVal1.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+
+      // Format Value 2 (Subtitle/Percentage text)
+      const val2Type = config.vlr_linha_02;
+      const rawVal2 = val2Type === 'ACUM' ? (row.accumulated || 0) : (row.percentage || 0);
+      const formattedVal2 = val2Type === 'ACUM' 
+         ? `R$ ${rawVal2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+         : `${rawVal2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+
+      // Calculate Variation (Current Month vs Previous Month)
+      // We need to identify the month columns from the selected period.
+      // selectedPeriod is YYYYMM e.g. 202508.
+      // Month Index: 8. Array Index (0-based): 7 -> 'ago'.
+      // Prev Month Index: 7. Array Index: 6 -> 'jul'.
+      
+      let variation = 0;
+      if (selectedPeriod) {
+          const monthIndex = (Number(selectedPeriod) % 100); // 1-12
+          if (monthIndex > 1) {
+               const monthKeys: (keyof DreDataRow)[] = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+               const currentKey = monthKeys[monthIndex - 1];
+               const prevKey = monthKeys[monthIndex - 2];
+               
+               const currentVal = (row[currentKey] as number) || 0;
+               const prevVal = (row[prevKey] as number) || 0;
+               
+               if (prevVal !== 0) {
+                   variation = ((currentVal - prevVal) / Math.abs(prevVal)) * 100;
+               } else if (currentVal !== 0) {
+                   variation = 100; // 0 to something is 100% growth technically (or infinite)
+               }
+          }
+      }
+
+      return {
+          title: config.tit_card_ajust || row.desc,
+          subtitle: 'vs Mês Anterior',
+          value: formattedVal1,
+          percentage: formattedVal2,
+          variation: variation
+      };
+  };
+
 
   return (
     <div className="flex h-screen bg-gray-900 text-gray-300">
@@ -709,12 +854,21 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
                         {error || warning}
                     </div>
                   )}
-                  {/* Stat Cards */}
+                  {/* Stat Cards - Dynamically Rendered */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <StatCard title="Receita Líquida" subtitle="Mês Atual" value="R$ 1.5M" percentage="85% da meta" variation={5.2} />
-                    <StatCard title="Lucro Bruto" subtitle="Mês Atual" value="R$ 800K" percentage="53.3% da receita" variation={3.1} />
-                    <StatCard title="EBITDA" subtitle="Mês Atual" value="R$ 450K" percentage="30% da receita" variation={-1.8} />
-                    <StatCard title="Lucro Líquido" subtitle="Mês Atual" value="R$ 350K" percentage="23.3% da receita" variation={-1.8} />
+                    {[1, 2, 3, 4].map(pos => {
+                        const data = processCardData(pos);
+                        return (
+                            <StatCard 
+                                key={pos}
+                                title={data.title} 
+                                subtitle={data.subtitle} 
+                                value={data.value} 
+                                percentage={data.percentage} 
+                                variation={data.variation} 
+                            />
+                        );
+                    })}
                   </div>
 
                   {/* Filters and Title */}

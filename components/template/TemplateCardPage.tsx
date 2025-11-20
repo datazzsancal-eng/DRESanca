@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -15,6 +16,7 @@ interface TemplateCard {
   id?: number;
   dre_template_id: string;
   dre_template_linha_id: number | null;
+  dre_linha_seq: number | null; // Added field
   vlr_linha_01: 'ACUM' | 'PERC';
   vlr_linha_02: 'ACUM' | 'PERC';
   crd_posicao: number;
@@ -36,8 +38,6 @@ const TemplateCardPage: React.FC<TemplateCardPageProps> = ({ templateId, onBack 
   const [error, setError] = useState<string | null>(null);
 
   const cardPositions = [1, 2, 3, 4];
-
-  const linhasMap = useMemo(() => new Map(linhas.map(l => [l.id, l.dre_linha_descri])), [linhas]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -65,6 +65,7 @@ const TemplateCardPage: React.FC<TemplateCardPageProps> = ({ templateId, onBack 
         return existingCards.get(pos) || {
             dre_template_id: templateId,
             dre_template_linha_id: null,
+            dre_linha_seq: null,
             vlr_linha_01: 'ACUM',
             vlr_linha_02: 'PERC',
             crd_posicao: pos,
@@ -96,14 +97,18 @@ const TemplateCardPage: React.FC<TemplateCardPageProps> = ({ templateId, onBack 
         if (field === 'dre_template_linha_id') {
             const selectedLinhaId = value; // Value from onChange is already a number or null
             if (selectedLinhaId) {
-                const linhaDesc = linhasMap.get(selectedLinhaId) || '';
-                updatedCard.tit_card_dre = linhaDesc;
-                // Pre-fill adjusted title only if it's currently empty
-                if (!updatedCard.tit_card_ajust) {
-                    updatedCard.tit_card_ajust = linhaDesc;
+                const selectedLinha = linhas.find(l => l.id === selectedLinhaId);
+                if (selectedLinha) {
+                    updatedCard.dre_linha_seq = selectedLinha.dre_linha_seq;
+                    updatedCard.tit_card_dre = selectedLinha.dre_linha_descri || '';
+                    // Pre-fill adjusted title only if it's currently empty
+                    if (!updatedCard.tit_card_ajust) {
+                        updatedCard.tit_card_ajust = selectedLinha.dre_linha_descri || '';
+                    }
                 }
             } else {
-                // Clear both titles when "-- Limpar Card --" is selected
+                // Clear fields when "-- Limpar Card --" is selected
+                updatedCard.dre_linha_seq = null;
                 updatedCard.tit_card_dre = '';
                 updatedCard.tit_card_ajust = '';
             }

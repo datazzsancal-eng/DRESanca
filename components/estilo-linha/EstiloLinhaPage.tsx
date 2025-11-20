@@ -168,7 +168,7 @@ const EstiloLinhaPage: React.FC = () => {
             est_fdo_doc: estiloLinha.est_fdo_doc || '#FFFFFF',
             est_txt_doc: estiloLinha.est_txt_doc || '#000000',
             est_opac_doc: estiloLinha.est_opac_doc ?? 100,
-            est_nivel_ident: estiloLinha.est_nivel_ident ?? 0
+            est_nivel_ident: estiloLinha.est_nivel_ident ? Number(estiloLinha.est_nivel_ident) : 0
         });
     } else {
         setFormData(initialFormState);
@@ -197,13 +197,13 @@ const EstiloLinhaPage: React.FC = () => {
 
     if (type === 'checkbox') {
         const { checked } = e.target as HTMLInputElement;
-        setFormData(prev => ({ ...prev, [name]: checked ? 'S' : 'N' }));
+        setFormData(prev => ({ ...prev, [name]: checked ? 'S' : 'N' } as any));
     } else if (name === 'estilo_nome') {
-        setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
+        setFormData(prev => ({ ...prev, [name]: value.toUpperCase() } as any));
     } else if (type === 'number') {
-         setFormData(prev => ({ ...prev, [name]: Number(value) }));
+         setFormData(prev => ({ ...prev, [name]: Number(value) } as any));
     } else {
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => ({ ...prev, [name]: value } as any));
     }
   };
 

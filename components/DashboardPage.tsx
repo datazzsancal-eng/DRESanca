@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 // import { supabase } from '../../lib/supabaseClient.ts';
-import { supabase } from '../lib/supabaseClient;
+import { supabase } from '../lib/supabaseClient';
 import ClientePage from './cliente/ClientePage';
 import GrupoEmpresarialPage from './grupo-empresarial/GrupoEmpresarialPage';
 import EmpresaPage from './empresa/EmpresaPage';

@@ -22,7 +22,7 @@ interface TemplateHeader {
   cliente_cnpj: string | null;
 }
 interface TemplateLinha {
-  id?: number;
+  id?: string | number;
   dre_template_id?: string;
   dre_linha_seq: number;
   tipo_linha_id: number | null;
@@ -32,8 +32,8 @@ interface TemplateLinha {
   dre_linha_visivel: string;
   dre_linha_valor: string | null;
   dre_linha_valor_fonte?: 'VALOR' | 'CONTA' | 'FORMULA' | null;
-  visao_id?: string | null; // Visibilidade condicional
-  perc_ref?: string | null; // Nova coluna
+  visao_id?: string | null;
+  perc_ref?: string | null;
 }
 interface TemplateLinhaForState extends TemplateLinha {
   _internalKey: string | number;
@@ -47,7 +47,6 @@ interface TemplateViewData {
   dre_linha_visivel: string;
   visao_nome?: string | null;
 }
-
 
 const initialHeaderState: TemplateHeader = {
   cliente_id: '',
@@ -68,7 +67,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   const [linhasData, setLinhasData] = useState<TemplateLinhaForState[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [cnpjs, setCnpjs] = useState<CnpjRaiz[]>([]);
-  const [visoes, setVisoes] = useState<Visao[]>([]); // Visões disponíveis para o cliente
+  const [visoes, setVisoes] = useState<Visao[]>([]);
   const [tiposLinha, setTiposLinha] = useState<TipoLinha[]>([]);
   const [estilosLinha, setEstilosLinha] = useState<EstiloLinha[]>([]);
   const [planoContas, setPlanoContas] = useState<PlanoConta[]>([]);
@@ -163,12 +162,10 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
           return; 
       }
       
-      // 1. CNPJs
       const { data: cnpjData, error: cnpjError } = await supabase.from('viw_cnpj_raiz').select('cnpj_raiz, reduz_emp').eq('cliente_id', headerData.cliente_id);
       if (cnpjError) console.error("Erro ao buscar CNPJs:", cnpjError);
       setCnpjs(cnpjData || []);
 
-      // 2. Visões (for visibility restriction)
       const { data: visaoData, error: visaoError } = await supabase.from('dre_visao').select('id, vis_nome').eq('cliente_id', headerData.cliente_id).order('vis_nome');
       if (visaoError) console.error("Erro ao buscar Visões:", visaoError);
       setVisoes(visaoData || []);
@@ -177,7 +174,6 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   }, [headerData.cliente_id]);
   
   useEffect(() => {
-    // This effect pre-fetches a portion of the accounts for quick display of descriptions.
     const fetchInitialPlanoContas = async () => {
         if (!headerData.cliente_cnpj) {
             setPlanoContas([]);
@@ -188,7 +184,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                 .from('dre_plano_contabil')
                 .select('conta_estru, conta_descri')
                 .eq('cnpj_raiz', headerData.cliente_cnpj)
-                .limit(5000) // Fetch a reasonable number for initial description mapping
+                .limit(5000)
                 .order('conta_estru');
 
             if (error) throw error;
@@ -201,7 +197,6 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
     fetchInitialPlanoContas();
   }, [headerData.cliente_cnpj]);
 
-  // Debounced search for accounts in the modal
   useEffect(() => {
       if (!isAccountModalOpen || !accountSearchQuery || !headerData.cliente_cnpj) {
           setAccountSearchResults([]);
@@ -221,13 +216,12 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
               if (error) throw error;
               setAccountSearchResults(data || []);
           } catch (err: any) {
-              // Silently fail in modal, or show a small error message
               console.error("Account search error:", err.message || err);
               setAccountSearchResults([]);
           } finally {
               setIsSearchingAccounts(false);
           }
-      }, 300); // 300ms debounce
+      }, 300);
 
       return () => clearTimeout(handler);
   }, [accountSearchQuery, isAccountModalOpen, headerData.cliente_cnpj]);
@@ -293,8 +287,8 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
       dre_linha_visivel: 'S',
       dre_linha_valor: '',
       dre_linha_valor_fonte: null,
-      visao_id: null, // Default to null (visible in all visions)
-      perc_ref: '', // Default empty
+      visao_id: null,
+      perc_ref: '',
     };
     setLinhasData(prev => [...prev, newLinha]);
   };
@@ -360,9 +354,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
             }
         }
         
-        // Fallback if response not OK or empty or invalid JSON
         if (templateId === 'new') {
-            // Can't fallback to DB for unsaved template
              throw new Error("Salve o template para visualizar a estrutura se o webhook estiver indisponível.");
         }
         
@@ -387,7 +379,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
             dre_linha_seq: l.dre_linha_seq,
             dre_linha_descri: l.dre_linha_descri,
             tipo_linha: l.tab_tipo_linha?.tipo_linha || '',
-            dre_linha_valor_descri: l.dre_linha_valor, // Show raw value
+            dre_linha_valor_descri: l.dre_linha_valor,
             dre_linha_valor_fonte: l.dre_linha_valor_fonte,
             dre_linha_visivel: l.dre_linha_visivel,
             visao_nome: l.dre_visao?.vis_nome || null
@@ -414,7 +406,6 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
         if (!headerData.dre_nome || filteredViewData.length === 0) return;
 
         const doc: any = new jsPDF();
-
         const title = `Template: ${headerData.dre_nome}`;
         doc.text(title, 14, 16);
 
@@ -439,7 +430,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
             body: tableRows,
             startY: 24,
             theme: 'grid',
-            headStyles: { fillColor: [34, 41, 51] }, // Dark gray header
+            headStyles: { fillColor: [34, 41, 51] },
             styles: { font: 'Roboto', cellPadding: 2, fontSize: 8 },
         });
 
@@ -465,7 +456,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
       
       if (!currentTemplateId) throw new Error("Não foi possível obter o ID do template.");
 
-      // Step 2: Manage Lines (Upsert + Selective Delete) to avoid FK constraint errors
+      // Step 2: Manage Lines (Upsert + Selective Delete)
       
       // A. Get IDs of lines currently in the database
       const { data: existingLines, error: fetchLinesError } = await supabase
@@ -476,13 +467,12 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
       if (fetchLinesError) throw fetchLinesError;
 
       const existingIds = new Set(existingLines?.map(l => l.id));
-      // Get IDs present in the form state
       const incomingIds = new Set(linhasData.map(l => l.id).filter(id => id !== undefined));
 
       // B. Identify IDs that were removed by the user
       const idsToDelete = [...existingIds].filter(id => !incomingIds.has(id));
 
-      // C. Delete removed lines (if any)
+      // C. Delete removed lines
       if (idsToDelete.length > 0) {
          const { error: deleteError } = await supabase
             .from('dre_template_linhas')
@@ -490,7 +480,6 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
             .in('id', idsToDelete);
          
          if (deleteError) {
-            // Friendly error message for FK violation
             if (deleteError.code === '23503') {
                  throw new Error("Não é possível excluir linhas que estão associadas a Cards do Dashboard. Por favor, remova o vínculo nos cards antes de excluir a linha.");
             }
@@ -498,38 +487,50 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
          }
       }
       
-      // D. Upsert current lines (Update existing + Insert new)
-      if (linhasData.length > 0) {
-        const linhasPayload = linhasData.map((linha, index) => {
-            const tipoLinha = tiposLinhaMap.get(Number(linha.tipo_linha_id));
-            const payload: any = {
-                dre_template_id: currentTemplateId,
-                dre_linha_seq: index + 1,
-                tipo_linha_id: linha.tipo_linha_id,
-                estilo_linha_id: linha.estilo_linha_id,
-                dre_linha_descri: linha.dre_linha_descri,
-                dre_linha_nivel: linha.dre_linha_nivel,
-                dre_linha_visivel: linha.dre_linha_visivel,
-                dre_linha_valor: linha.dre_linha_valor,
-                dre_linha_valor_fonte: tipoLinha === 'CONSTANTE' ? (linha.dre_linha_valor_fonte || 'VALOR') : null,
-                visao_id: linha.visao_id || null,
-                perc_ref: linha.perc_ref || null,
-            };
+      // D. Split Upsert logic: Update existing lines and Insert new lines
+      const linesToInsert: any[] = [];
+      const linesToUpdate: any[] = [];
 
-            // If it has an ID, include it to trigger an UPDATE
-            if (linha.id) {
-                payload.id = linha.id;
-            }
-            // If no ID, Supabase will treat it as an INSERT
-            
-            return payload;
-        });
+      linhasData.forEach((linha, index) => {
+        const tipoLinha = tiposLinhaMap.get(Number(linha.tipo_linha_id));
+        
+        const basePayload = {
+            dre_template_id: currentTemplateId,
+            dre_linha_seq: index + 1,
+            tipo_linha_id: linha.tipo_linha_id,
+            estilo_linha_id: linha.estilo_linha_id,
+            dre_linha_descri: linha.dre_linha_descri,
+            dre_linha_nivel: linha.dre_linha_nivel,
+            dre_linha_visivel: linha.dre_linha_visivel,
+            dre_linha_valor: linha.dre_linha_valor,
+            dre_linha_valor_fonte: tipoLinha === 'CONSTANTE' ? (linha.dre_linha_valor_fonte || 'VALOR') : null,
+            visao_id: linha.visao_id || null,
+            perc_ref: linha.perc_ref || null,
+        };
 
+        if (linha.id) {
+            // Existing line: include ID
+            linesToUpdate.push({ ...basePayload, id: linha.id });
+        } else {
+            // New line: DO NOT include ID, let database generate it
+            linesToInsert.push(basePayload);
+        }
+      });
+
+      // Update existing
+      if (linesToUpdate.length > 0) {
         const { error: upsertError } = await supabase
             .from('dre_template_linhas')
-            .upsert(linhasPayload); // upsert works based on PK (id)
-
+            .upsert(linesToUpdate);
         if (upsertError) throw upsertError;
+      }
+
+      // Insert new
+      if (linesToInsert.length > 0) {
+        const { error: insertError } = await supabase
+            .from('dre_template_linhas')
+            .insert(linesToInsert);
+        if (insertError) throw insertError;
       }
       
       onBack();

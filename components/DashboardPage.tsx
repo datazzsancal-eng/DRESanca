@@ -349,7 +349,10 @@ const DreTable: React.FC<DreTableProps> = ({ data, selectedPeriod }) => {
                         // Dynamic Styles
                         const fontWeight = row.isBold ? 'bold' : 'normal';
                         const fontStyle = row.isItalic ? 'italic' : 'normal';
-                        const paddingLeft = row.indentationLevel ? `${row.indentationLevel * 2}ch` : '0.75rem'; // 0.75rem is roughly 12px (px-3)
+                        // Adjust padding: 
+                        // Using 'ch' unit which is approximately the width of the '0' character.
+                        // We add the base padding (0.75rem ~ px-3) to the indentation level.
+                        const paddingLeft = `calc(0.75rem + ${(row.indentationLevel || 0)}ch)`;
 
                         return (
                             <tr key={index} className="hover:bg-gray-700/50">
@@ -636,11 +639,30 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
 
         const formattedData: DreDataRow[] = visibleData.map((row: any) => {
             const seq = row.dre_linha_seq;
-            const style = lineStyles.get(seq);
+            // Get database styles as a fallback
+            const dbStyle = lineStyles.get(seq);
             
-            const isBold = style?.tipografia === 'NEGRITO' || style?.tipografia === 'NEGR/ITAL';
-            const isItalic = style?.tipografia === 'ITALICO' || style?.tipografia === 'NEGR/ITAL';
-            const indentationLevel = style?.indentacao || 0;
+            // Prioritize API data for styling if available
+            const apiIndent = row.est_nivel_ident !== undefined && row.est_nivel_ident !== null ? Number(row.est_nivel_ident) : null;
+            const apiTypography = row.est_tipg_tela;
+
+            let isBold = false;
+            let isItalic = false;
+            let indentationLevel = 0;
+
+            if (apiTypography) {
+                 isBold = apiTypography === 'NEGRITO' || apiTypography === 'NEGR/ITAL';
+                 isItalic = apiTypography === 'ITALICO' || apiTypography === 'NEGR/ITAL';
+            } else {
+                 isBold = dbStyle?.tipografia === 'NEGRITO' || dbStyle?.tipografia === 'NEGR/ITAL';
+                 isItalic = dbStyle?.tipografia === 'ITALICO' || dbStyle?.tipografia === 'NEGR/ITAL';
+            }
+
+            if (apiIndent !== null) {
+                indentationLevel = apiIndent;
+            } else {
+                indentationLevel = dbStyle?.indentacao || 0;
+            }
 
             return {
                 seq: seq, 

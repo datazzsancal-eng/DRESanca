@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -313,49 +314,57 @@ const EmpresaPage: React.FC = () => {
       {/* Add/Edit Modal */}
       <Modal isOpen={isModalOpen} onClose={closeModal} title={selectedEmpresa ? 'Editar Empresa' : 'Adicionar Empresa'} size="3xl">
         <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-            <div>
-                <label htmlFor="cliente_id" className="block text-sm font-medium text-gray-300">Cliente</label>
-                <select name="cliente_id" id="cliente_id" value={formData.cliente_id} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
-                    <option value="">Selecione um cliente</option>
-                    {clientes.map(c => <option key={c.id} value={c.id}>{c.cli_nome}</option>)}
-                </select>
-            </div>
+            {/* Linha 1: Cliente e CNPJ Raiz */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label htmlFor="emp_nome" className="block text-sm font-medium text-gray-300">Nome da Empresa</label>
-                    <input type="text" name="emp_nome" id="emp_nome" value={formData.emp_nome} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
-                </div>
-                 <div>
-                    <label htmlFor="emp_nome_reduz" className="block text-sm font-medium text-gray-300">Nome Reduzido</label>
-                    <input type="text" name="emp_nome_reduz" id="emp_nome_reduz" value={formData.emp_nome_reduz} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
-                </div>
-            </div>
-             <div>
-                <label htmlFor="emp_nome_cmpl" className="block text-sm font-medium text-gray-300">Nome Complementar</label>
-                <input type="text" name="emp_nome_cmpl" id="emp_nome_cmpl" value={formData.emp_nome_cmpl} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label htmlFor="emp_cnpj" className="block text-sm font-medium text-gray-300">CNPJ</label>
-                    <input type="text" name="emp_cnpj" id="emp_cnpj" value={formData.emp_cnpj} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                    <label htmlFor="cliente_id" className="block text-sm font-medium text-gray-300">Cliente</label>
+                    <select name="cliente_id" id="cliente_id" value={formData.cliente_id} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">Selecione um cliente</option>
+                        {clientes.map(c => <option key={c.id} value={c.id}>{c.cli_nome}</option>)}
+                    </select>
                 </div>
                 <div>
                     <label htmlFor="emp_cnpj_raiz" className="block text-sm font-medium text-gray-300">CNPJ Raiz</label>
                     <input type="text" name="emp_cnpj_raiz" id="emp_cnpj_raiz" value={formData.emp_cnpj_raiz} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
                 </div>
             </div>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            {/* Linha 2: Nome da Empresa */}
+            <div>
+                <label htmlFor="emp_nome" className="block text-sm font-medium text-gray-300">Nome da Empresa</label>
+                <input type="text" name="emp_nome" id="emp_nome" value={formData.emp_nome} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+            </div>
+
+            {/* Linha 3: Nome Reduzido e Nome Complementar */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div>
+                    <label htmlFor="emp_nome_reduz" className="block text-sm font-medium text-gray-300">Nome Reduzido</label>
+                    <input type="text" name="emp_nome_reduz" id="emp_nome_reduz" value={formData.emp_nome_reduz} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                </div>
+                 <div>
+                    <label htmlFor="emp_nome_cmpl" className="block text-sm font-medium text-gray-300">Nome Complementar</label>
+                    <input type="text" name="emp_nome_cmpl" id="emp_nome_cmpl" value={formData.emp_nome_cmpl} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                </div>
+            </div>
+
+            {/* Linha 4: CNPJ, Cod Integração e Matriz */}
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label htmlFor="emp_cnpj" className="block text-sm font-medium text-gray-300">CNPJ</label>
+                    <input type="text" name="emp_cnpj" id="emp_cnpj" value={formData.emp_cnpj} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                </div>
                 <div>
                     <label htmlFor="emp_cod_integra" className="block text-sm font-medium text-gray-300">Cód. Integração</label>
                     <input type="text" name="emp_cod_integra" id="emp_cod_integra" value={formData.emp_cod_integra} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
                 </div>
-                <div className="flex items-end">
-                    <label className="flex items-center space-x-2 text-sm font-medium text-gray-300">
+                <div className="flex items-end pb-2">
+                    <label className="flex items-center space-x-2 text-sm font-medium text-gray-300 cursor-pointer">
                         <input type="checkbox" name="emp_matriz_sn" checked={formData.emp_matriz_sn === 'S'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500" />
                         <span>É Matriz?</span>
                     </label>
                 </div>
             </div>
+
             <div className="flex justify-end pt-4 space-x-2">
                 <button type="button" onClick={closeModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">Cancelar</button>
                 {!selectedEmpresa && (

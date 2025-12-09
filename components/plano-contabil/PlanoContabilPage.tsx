@@ -3,13 +3,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
 import PlanoContabilComparePage from './PlanoContabilComparePage';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Type definitions
-interface Cliente {
-  id: string;
-  cli_nome: string | null;
-}
-
 interface EmpresaRaiz {
   cnpj_raiz: string;
   reduz_emp: string | null;
@@ -27,18 +23,17 @@ interface PlanoContabil {
 }
 
 const PlanoContabilPage: React.FC = () => {
+  const { selectedClient } = useAuth();
   const [isComparing, setIsComparing] = useState(false);
   
   // State management
   const [contas, setContas] = useState<PlanoContabil[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [empresasRaiz, setEmpresasRaiz] = useState<EmpresaRaiz[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalContas, setTotalContas] = useState<number | null>(null);
 
   // Filter state
-  const [selectedCliente, setSelectedCliente] = useState('');
   const [selectedCnpjRaiz, setSelectedCnpjRaiz] = useState('');
   const [filtroConta, setFiltroConta] = useState('');
 
@@ -48,25 +43,10 @@ const PlanoContabilPage: React.FC = () => {
   const [selectedConta, setSelectedConta] = useState<PlanoContabil | null>(null);
   const [formData, setFormData] = useState({ conta_estru: '', conta_grau: '', conta_descri: '' });
 
-  // Initial data fetching for clients
-  useEffect(() => {
-    const fetchClientes = async () => {
-      setLoading(true);
-      const { data, error } = await supabase.from('dre_cliente').select('id, cli_nome').order('cli_nome');
-      if (error) {
-        setError(`Falha ao carregar clientes: ${error.message}`);
-      } else {
-        setClientes(data || []);
-      }
-      setLoading(false);
-    };
-    fetchClientes();
-  }, []);
-
   // Fetch distinct CNPJ roots when a client is selected
   useEffect(() => {
     const fetchEmpresasRaiz = async () => {
-      if (!selectedCliente) {
+      if (!selectedClient) {
         setEmpresasRaiz([]);
         setSelectedCnpjRaiz('');
         setContas([]);
@@ -74,7 +54,7 @@ const PlanoContabilPage: React.FC = () => {
         return;
       }
       setLoading(true);
-      const { data, error } = await supabase.from('viw_cnpj_raiz').select('cnpj_raiz, reduz_emp').eq('cliente_id', selectedCliente);
+      const { data, error } = await supabase.from('viw_cnpj_raiz').select('cnpj_raiz, reduz_emp').eq('cliente_id', selectedClient.id);
       
       if (error) {
         setError(`Falha ao carregar CNPJs: ${error.message}`);
@@ -88,12 +68,12 @@ const PlanoContabilPage: React.FC = () => {
       setLoading(false);
     };
     fetchEmpresasRaiz();
-  }, [selectedCliente]);
+  }, [selectedClient]);
 
   // Fetch total count when client/cnpj changes
   useEffect(() => {
     const getTotalCount = async () => {
-      if (!selectedCliente || !selectedCnpjRaiz) {
+      if (!selectedClient || !selectedCnpjRaiz) {
         setTotalContas(null);
         return;
       }
@@ -101,7 +81,7 @@ const PlanoContabilPage: React.FC = () => {
         const { count, error } = await supabase
           .from('dre_plano_contabil')
           .select('*', { count: 'exact', head: true })
-          .eq('cliente_id', selectedCliente)
+          .eq('cliente_id', selectedClient.id)
           .eq('cnpj_raiz', selectedCnpjRaiz);
         
         if (error) throw error;
@@ -113,12 +93,12 @@ const PlanoContabilPage: React.FC = () => {
     };
     
     getTotalCount();
-  }, [selectedCliente, selectedCnpjRaiz]);
+  }, [selectedClient, selectedCnpjRaiz]);
 
 
   // Fetch chart of accounts when client and CNPJ root are selected
   const fetchContas = useCallback(async () => {
-    if (!selectedCliente || !selectedCnpjRaiz) {
+    if (!selectedClient || !selectedCnpjRaiz) {
       setContas([]);
       return;
     }
@@ -137,7 +117,7 @@ const PlanoContabilPage: React.FC = () => {
         let query = supabase
           .from('dre_plano_contabil')
           .select('*')
-          .eq('cliente_id', selectedCliente)
+          .eq('cliente_id', selectedClient.id)
           .eq('cnpj_raiz', selectedCnpjRaiz);
         
         if (filtroConta) {
@@ -166,7 +146,7 @@ const PlanoContabilPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedCliente, selectedCnpjRaiz, filtroConta]);
+  }, [selectedClient, selectedCnpjRaiz, filtroConta]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -215,14 +195,14 @@ const PlanoContabilPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCliente || !selectedCnpjRaiz) {
+    if (!selectedClient || !selectedCnpjRaiz) {
       setError("Cliente e CNPJ Raiz devem ser selecionados.");
       return;
     }
     const empresa = empresasRaiz.find(e => e.cnpj_raiz === selectedCnpjRaiz);
 
     const payload = {
-      cliente_id: selectedCliente,
+      cliente_id: selectedClient.id,
       cnpj_raiz: selectedCnpjRaiz,
       reduz_emp: empresa?.reduz_emp || null,
       conta_estru: formData.conta_estru.toUpperCase() || null,
@@ -261,11 +241,11 @@ const PlanoContabilPage: React.FC = () => {
     if (loading) {
       return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando...</span></div>;
     }
-    if (!selectedCliente || !selectedCnpjRaiz) {
+    if (!selectedClient || !selectedCnpjRaiz) {
         return (
             <div className="p-6 text-center bg-gray-800/50">
-                <h2 className="text-lg font-bold text-white">Selecione os Filtros</h2>
-                <p className="mt-1 text-gray-400">Por favor, selecione um cliente e um CNPJ raiz para ver o plano de contas.</p>
+                <h2 className="text-lg font-bold text-white">Selecione a Empresa</h2>
+                <p className="mt-1 text-gray-400">Por favor, selecione um CNPJ raiz para ver o plano de contas de {selectedClient?.cli_nome}.</p>
             </div>
         );
     }
@@ -321,20 +301,13 @@ const PlanoContabilPage: React.FC = () => {
   return (
     <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md space-y-4">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <h2 className="text-lg font-bold text-white">Filtros do Plano Contábil</h2>
+        <h2 className="text-lg font-bold text-white">Plano Contábil ({selectedClient?.cli_nome})</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <select 
-            value={selectedCliente} 
-            onChange={(e) => setSelectedCliente(e.target.value)} 
-            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          >
-            <option value="">Selecione um Cliente</option>
-            {clientes.map(c => <option key={c.id} value={c.id}>{c.cli_nome}</option>)}
-          </select>
+          {/* Removed Client Dropdown - now using context */}
           <select 
             value={selectedCnpjRaiz} 
             onChange={handleCnpjRaizChange} 
-            disabled={!selectedCliente || empresasRaiz.length === 0}
+            disabled={!selectedClient || empresasRaiz.length === 0}
             className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
           >
             <option value="">Selecione a Empresa (CNPJ Raiz)</option>
@@ -355,7 +328,7 @@ const PlanoContabilPage: React.FC = () => {
           </button>
           <button
             onClick={() => openModal()}
-            disabled={!selectedCliente || !selectedCnpjRaiz}
+            disabled={!selectedClient || !selectedCnpjRaiz}
             className="w-full md:w-auto px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 whitespace-nowrap disabled:bg-indigo-800 disabled:cursor-not-allowed"
           >
             Adicionar Conta
@@ -366,7 +339,7 @@ const PlanoContabilPage: React.FC = () => {
       {error && <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{error}</div>}
       
       {/* Record Count Display */}
-      {selectedCliente && selectedCnpjRaiz && !loading && totalContas !== null && (
+      {selectedClient && selectedCnpjRaiz && !loading && totalContas !== null && (
         <div className="text-sm text-gray-400">
           <span>
             {contas.length.toLocaleString('pt-BR')} de {totalContas.toLocaleString('pt-BR')} registros
@@ -378,6 +351,15 @@ const PlanoContabilPage: React.FC = () => {
 
       <Modal isOpen={isModalOpen} onClose={closeModal} title={selectedConta ? 'Editar Conta' : 'Adicionar Conta'}>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300">Cliente</label>
+            <input 
+              type="text" 
+              value={selectedClient?.cli_nome || ''} 
+              disabled 
+              className="w-full px-3 py-2 mt-1 text-gray-400 bg-gray-800 border border-gray-600 rounded-md cursor-not-allowed" 
+            />
+          </div>
           <div>
             <label htmlFor="conta_estru" className="block text-sm font-medium text-gray-300">Conta Estrutural</label>
             <input type="text" name="conta_estru" id="conta_estru" value={formData.conta_estru} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,21 +68,29 @@ const LoginPage: React.FC = () => {
               placeholder="E-mail"
             />
           </div>
-          <div>
+          <div className="relative">
             <label htmlFor="password"className="text-sm font-medium text-gray-300 sr-only">
               Password
             </label>
             <input
               id="password"
               name="password"
-              type="password"
+              type={showPassword ? "text" : "password"}
               autoComplete="current-password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 text-white placeholder-gray-400 bg-gray-700 border border-gray-600 rounded-md appearance-none focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+              className="w-full px-3 py-2 pr-10 text-white placeholder-gray-400 bg-gray-700 border border-gray-600 rounded-md appearance-none focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
               placeholder="Senha"
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white focus:outline-none"
+              title={showPassword ? "Ocultar senha" : "Exibir senha"}
+            >
+              <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+            </button>
           </div>
           <button
             type="submit"

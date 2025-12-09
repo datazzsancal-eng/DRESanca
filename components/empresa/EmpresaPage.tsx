@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Type definitions
 interface Cliente {
@@ -35,6 +36,8 @@ const initialFormData = {
 
 
 const EmpresaPage: React.FC = () => {
+  const { selectedClient } = useAuth();
+
   // State management
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -48,18 +51,23 @@ const EmpresaPage: React.FC = () => {
   const [formData, setFormData] = useState(initialFormData);
 
   // Filter state
-  const [filtroCliente, setFiltroCliente] = useState('');
+  // Removed filtroCliente as it is now context-based
   const [filtroNome, setFiltroNome] = useState('');
   const [filtroCodigo, setFiltroCodigo] = useState('');
 
 
   // Data fetching
   const fetchData = useCallback(async () => {
+    if (!selectedClient) return;
+
     setLoading(true);
     setError(null);
     try {
       let empresasQuery = supabase.from('dre_empresa').select('*');
-      if (filtroCliente) empresasQuery = empresasQuery.eq('cliente_id', filtroCliente);
+      
+      // Enforce selected client context
+      empresasQuery = empresasQuery.eq('cliente_id', selectedClient.id);
+
       if (filtroNome) empresasQuery = empresasQuery.ilike('emp_nome', `%${filtroNome}%`);
       if (filtroCodigo) empresasQuery = empresasQuery.ilike('emp_cod_integra', `%${filtroCodigo}%`);
       
@@ -82,7 +90,7 @@ const EmpresaPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filtroCliente, filtroNome, filtroCodigo]);
+  }, [selectedClient, filtroNome, filtroCodigo]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -95,7 +103,8 @@ const EmpresaPage: React.FC = () => {
   const openModal = (empresa: Empresa | null = null) => {
     setSelectedEmpresa(empresa);
     setFormData({
-      cliente_id: empresa?.cliente_id || filtroCliente || '',
+      // Ensure we always use the selectedClient ID for new records, or preserve existing for edits (though edits should match context anyway)
+      cliente_id: empresa?.cliente_id || selectedClient?.id || '',
       emp_cod_integra: empresa?.emp_cod_integra || '',
       emp_cnpj_raiz: empresa?.emp_cnpj_raiz || '',
       emp_cnpj: empresa?.emp_cnpj || '',
@@ -142,7 +151,12 @@ const EmpresaPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent, keepOpen = false) => {
     e.preventDefault();
     
-    const payload = { ...formData };
+    // Ensure payload always has the correct client_id from context
+    const payload = { 
+        ...formData,
+        cliente_id: selectedClient?.id 
+    };
+    
     let requestError;
 
     if (selectedEmpresa) {
@@ -211,8 +225,11 @@ const EmpresaPage: React.FC = () => {
     } else {
       fetchData();
       if (keepOpen) {
-          const currentCliente = formData.cliente_id;
-          setFormData({ ...initialFormData, cliente_id: currentCliente });
+          // Reset form but keep the forced client ID
+          setFormData({ 
+              ...initialFormData, 
+              cliente_id: selectedClient?.id || '' 
+          });
           setSelectedEmpresa(null);
       } else {
         closeModal();
@@ -247,7 +264,7 @@ const EmpresaPage: React.FC = () => {
             <div className="p-6 bg-gray-800/50 text-center">
                 <h2 className="text-lg font-bold text-white">Nenhuma Empresa Encontrada</h2>
                 <p className="mt-1 text-gray-400">
-                    {filtroCliente || filtroNome || filtroCodigo ? "Tente ajustar seus filtros de busca." : "Clique em 'Adicionar Empresa' para começar."}
+                    {filtroNome || filtroCodigo ? "Tente ajustar seus filtros de busca." : "Clique em 'Adicionar Empresa' para começar."}
                 </p>
             </div>
         );
@@ -260,7 +277,7 @@ const EmpresaPage: React.FC = () => {
                         <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Cód. Integração</th>
                         <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Nome da Empresa</th>
                         <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Nome Complementar</th>
-                        <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Cliente</th>
+                        {/* Removed Client Column as it's redundant when filtered by context */}
                         <th className="px-4 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">Ações</th>
                     </tr>
                 </thead>
@@ -270,7 +287,7 @@ const EmpresaPage: React.FC = () => {
                             <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{empresa.emp_cod_integra}</td>
                             <td className="px-4 py-2 font-medium text-white whitespace-nowrap">{empresa.emp_nome}</td>
                             <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{empresa.emp_nome_cmpl}</td>
-                            <td className="px-4 py-2 text-gray-400 whitespace-nowrap">{empresa.cliente_id ? clientesMap.get(empresa.cliente_id) || 'Inválido' : 'N/A'}</td>
+                            {/* <td className="px-4 py-2 text-gray-400 whitespace-nowrap">{empresa.cliente_id ? clientesMap.get(empresa.cliente_id) || 'Inválido' : 'N/A'}</td> */}
                             <td className="px-4 py-2 text-right whitespace-nowrap">
                                 <div className="flex items-center justify-end space-x-4">
                                     <button onClick={() => openModal(empresa)} className="text-indigo-400 hover:text-indigo-300" aria-label="Editar">
@@ -292,12 +309,9 @@ const EmpresaPage: React.FC = () => {
   return (
     <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md space-y-4">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <h2 className="text-lg font-bold text-white">Filtros</h2>
+        <h2 className="text-lg font-bold text-white">Empresas ({selectedClient?.cli_nome})</h2>
         <div className="flex flex-wrap items-center gap-2">
-            <select value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                <option value="">Todos os Clientes</option>
-                {clientes.map(c => <option key={c.id} value={c.id}>{c.cli_nome}</option>)}
-            </select>
+            {/* Removed Client Filter Select */}
             <input type="text" placeholder="Buscar por nome..." value={filtroNome} onChange={(e) => setFiltroNome(e.target.value.toUpperCase())} className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
             <input type="text" placeholder="Buscar por código..." value={filtroCodigo} onChange={(e) => setFiltroCodigo(e.target.value.toUpperCase())} className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
             <button
@@ -318,7 +332,15 @@ const EmpresaPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label htmlFor="cliente_id" className="block text-sm font-medium text-gray-300">Cliente</label>
-                    <select name="cliente_id" id="cliente_id" value={formData.cliente_id} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                    <select 
+                        name="cliente_id" 
+                        id="cliente_id" 
+                        value={formData.cliente_id} 
+                        onChange={handleFormChange} 
+                        required 
+                        disabled={true} // Locked to current context
+                        className="w-full px-3 py-2 mt-1 text-gray-400 bg-gray-800 border border-gray-600 rounded-md cursor-not-allowed"
+                    >
                         <option value="">Selecione um cliente</option>
                         {clientes.map(c => <option key={c.id} value={c.id}>{c.cli_nome}</option>)}
                     </select>

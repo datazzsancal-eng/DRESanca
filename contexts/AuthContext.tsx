@@ -190,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error("Auth change fetch error:", e);
         }
       } else {
+        // Quando detectarmos logout, limpamos tudo
         setProfile(null);
         setAvailableClients([]);
         selectClient(null);
@@ -203,15 +204,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = async () => {
+    // 1. Feedback imediato para o usuário saber que o clique funcionou
+    setLoading(true);
+    
     try {
-        // Timeout curto para logout (2s) para evitar travamento
+        // 2. Tenta logout no servidor (com timeout curto para não travar a UI se a rede falhar)
         await Promise.race([
             supabase.auth.signOut(),
             new Promise(resolve => setTimeout(resolve, 2000))
         ]);
     } catch (error) {
-        console.error("Sign out error:", error);
+        console.error("Sign out error (non-blocking):", error);
     } finally {
+        // 3. Limpeza local garantida
         setProfile(null);
         setUser(null);
         setSession(null);
@@ -225,7 +230,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 localStorage.removeItem(key);
             }
         });
-        window.location.reload(); // Recarregar para garantir estado limpo
+        
+        // 4. Finaliza loading. Como session agora é null, o App.tsx vai renderizar o LoginPage automaticamente.
+        // NÃO usamos window.location.reload() para evitar re-inicialização de sessão fantasma.
+        setLoading(false);
     }
   };
 

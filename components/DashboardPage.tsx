@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 // import { supabase } from '../../lib/supabaseClient.ts';
 import { supabase } from '../lib/supabaseClient';
@@ -1044,14 +1043,39 @@ const DashboardPage: React.FC = () => {
               </div>
               
               {/* Data Table */}
-              <div className="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700 min-h-[200px] flex items-center justify-center">
+              <div className={`bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700 min-h-[400px] flex ${dreData.length > 0 && !loading ? 'items-start' : 'items-center justify-center'}`}>
                 {loading ? (
-                    <div className="flex items-center justify-center"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando dados...</span></div>
+                    <div className="flex flex-col items-center justify-center">
+                        <div className="w-12 h-12 border-4 border-t-transparent border-indigo-500 rounded-full animate-spin"></div>
+                        <span className="mt-4 text-lg text-gray-300">Carregando dados...</span>
+                    </div>
                 ) : dreData.length > 0 ? (
-                    <DreTable data={dreData} selectedPeriod={selectedPeriod} />
+                    <div className="w-full">
+                        <DreTable data={dreData} selectedPeriod={selectedPeriod} />
+                    </div>
                 ) : (
-                    <div className="text-center text-gray-400">
-                        {(!selectedPeriod || !selectedVisao) ? "Selecione os filtros para visualizar os dados." : "Nenhum dado para exibir."}
+                    <div className="flex flex-col items-center justify-center text-center p-8">
+                        {(!selectedPeriod || !selectedVisao) ? (
+                            <>
+                                <div className="w-16 h-16 bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-xl font-bold text-white mb-2">Selecione os Filtros</h3>
+                                <p className="text-gray-400 max-w-sm">Escolha um Período e uma Visão acima para carregar os dados do DRE.</p>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-16 h-16 bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-xl font-bold text-white mb-2">Não há dados</h3>
+                                <p className="text-gray-400 max-w-sm">Não encontramos registros para o período selecionado.</p>
+                            </>
+                        )}
                     </div>
                 )}
               </div>

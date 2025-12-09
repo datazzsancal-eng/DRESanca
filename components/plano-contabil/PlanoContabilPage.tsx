@@ -23,7 +23,7 @@ interface PlanoContabil {
 }
 
 const PlanoContabilPage: React.FC = () => {
-  const { selectedClient } = useAuth();
+  const { selectedClient, user } = useAuth();
   const [isComparing, setIsComparing] = useState(false);
   
   // State management
@@ -43,10 +43,10 @@ const PlanoContabilPage: React.FC = () => {
   const [selectedConta, setSelectedConta] = useState<PlanoContabil | null>(null);
   const [formData, setFormData] = useState({ conta_estru: '', conta_grau: '', conta_descri: '' });
 
-  // Fetch distinct CNPJ roots when a client is selected
+  // Fetch distinct CNPJ roots when a client is selected, filtering by user permissions
   useEffect(() => {
     const fetchEmpresasRaiz = async () => {
-      if (!selectedClient) {
+      if (!selectedClient || !user) {
         setEmpresasRaiz([]);
         setSelectedCnpjRaiz('');
         setContas([]);
@@ -54,21 +54,68 @@ const PlanoContabilPage: React.FC = () => {
         return;
       }
       setLoading(true);
-      const { data, error } = await supabase.from('viw_cnpj_raiz').select('cnpj_raiz, reduz_emp').eq('cliente_id', selectedClient.id);
-      
-      if (error) {
-        setError(`Falha ao carregar CNPJs: ${error.message}`);
+      setError(null);
+
+      try {
+        // 1. Buscar permissões: quais empresas este usuário pode ver neste cliente?
+        const { data: relData, error: relError } = await supabase
+            .from('rel_prof_cli_empr')
+            .select(`
+                empresa_id,
+                dre_empresa ( emp_cnpj_raiz )
+            `)
+            .eq('profile_id', user.id)
+            .eq('cliente_id', selectedClient.id)
+            .eq('rel_situacao_id', 'ATV');
+
+        if (relError) throw relError;
+
+        const allowedRoots = new Set<string>();
+        let hasFullAccess = false;
+
+        if (relData) {
+            relData.forEach((item: any) => {
+                // Se empresa_id for nulo, assume acesso total ao cliente (legado ou admin irrestrito)
+                if (item.empresa_id === null) {
+                    hasFullAccess = true;
+                } else if (item.dre_empresa?.emp_cnpj_raiz) {
+                    allowedRoots.add(item.dre_empresa.emp_cnpj_raiz);
+                }
+            });
+        }
+
+        // 2. Buscar todas as raízes disponíveis para o cliente (para pegar os nomes corretos da view)
+        const { data: viewData, error: viewError } = await supabase
+            .from('viw_cnpj_raiz')
+            .select('cnpj_raiz, reduz_emp')
+            .eq('cliente_id', selectedClient.id)
+            .order('reduz_emp');
+        
+        if (viewError) throw viewError;
+
+        const allRoots = viewData || [];
+
+        // 3. Filtrar
+        if (hasFullAccess) {
+            setEmpresasRaiz(allRoots);
+        } else {
+            const filteredRoots = allRoots.filter(r => allowedRoots.has(r.cnpj_raiz));
+            setEmpresasRaiz(filteredRoots);
+        }
+
+      } catch (err: any) {
+        console.error("Erro ao buscar empresas permitidas:", err);
+        setError(`Falha ao carregar lista de empresas: ${err.message}`);
         setEmpresasRaiz([]);
-      } else {
-        setEmpresasRaiz(data || []);
+      } finally {
+        setSelectedCnpjRaiz('');
+        setContas([]);
+        setTotalContas(null);
+        setLoading(false);
       }
-      setSelectedCnpjRaiz('');
-      setContas([]);
-      setTotalContas(null);
-      setLoading(false);
     };
     fetchEmpresasRaiz();
-  }, [selectedClient]);
+  }, [selectedClient, user]);
 
   // Fetch total count when client/cnpj changes
   useEffect(() => {
@@ -241,7 +288,23 @@ const PlanoContabilPage: React.FC = () => {
     if (loading) {
       return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando...</span></div>;
     }
-    if (!selectedClient || !selectedCnpjRaiz) {
+    if (!selectedClient) {
+        return (
+            <div className="p-6 text-center bg-gray-800/50">
+                <h2 className="text-lg font-bold text-white">Selecione um Cliente</h2>
+                <p className="mt-1 text-gray-400">Por favor, selecione um cliente no menu lateral.</p>
+            </div>
+        );
+    }
+    if (empresasRaiz.length === 0) {
+        return (
+            <div className="p-6 text-center bg-gray-800/50">
+                <h2 className="text-lg font-bold text-white">Nenhuma Empresa Disponível</h2>
+                <p className="mt-1 text-gray-400">Você não possui permissão de acesso a nenhuma empresa (CNPJ Raiz) para este cliente.</p>
+            </div>
+        );
+    }
+    if (!selectedCnpjRaiz) {
         return (
             <div className="p-6 text-center bg-gray-800/50">
                 <h2 className="text-lg font-bold text-white">Selecione a Empresa</h2>
@@ -303,7 +366,6 @@ const PlanoContabilPage: React.FC = () => {
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <h2 className="text-lg font-bold text-white">Plano Contábil ({selectedClient?.cli_nome})</h2>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Removed Client Dropdown - now using context */}
           <select 
             value={selectedCnpjRaiz} 
             onChange={handleCnpjRaizChange} 

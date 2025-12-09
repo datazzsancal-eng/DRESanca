@@ -102,7 +102,7 @@ const LoginPage: React.FC = () => {
           </button>
           <div className="flex justify-end pt-2">
             <img 
-              src="https://raw.githubusercontent.com/synapiens/uteis/refs/heads/main/logomarca/Synapiens_logo_hor.png" 
+              src="https://raw.githubusercontent.com/synapiens/uteis/refs/heads/main/LogoSynapiens/Synapiens_logo_hor.png" 
               alt="Synapiens" 
               className="h-8 w-auto" 
             />

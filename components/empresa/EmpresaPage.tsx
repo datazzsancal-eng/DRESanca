@@ -36,7 +36,7 @@ const initialFormData = {
 
 
 const EmpresaPage: React.FC = () => {
-  const { selectedClient } = useAuth();
+  const { selectedClient, user } = useAuth();
 
   // State management
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -58,15 +58,50 @@ const EmpresaPage: React.FC = () => {
 
   // Data fetching
   const fetchData = useCallback(async () => {
-    if (!selectedClient) return;
+    if (!selectedClient || !user) return;
 
     setLoading(true);
     setError(null);
     try {
+      // 1. Check permissions
+      const { data: relData, error: relError } = await supabase
+        .from('rel_prof_cli_empr')
+        .select('empresa_id')
+        .eq('profile_id', user.id)
+        .eq('cliente_id', selectedClient.id)
+        .eq('rel_situacao_id', 'ATV');
+
+      if (relError) throw relError;
+
+      let allowedCompanyIds: string[] = [];
+      let hasFullAccess = false;
+
+      if (relData) {
+          // If any record has null empresa_id, user has full access to client
+          hasFullAccess = relData.some((r: any) => r.empresa_id === null);
+          if (!hasFullAccess) {
+              allowedCompanyIds = relData.map((r: any) => r.empresa_id).filter(Boolean);
+          }
+      }
+
+      // If no full access and no specific companies, return empty
+      if (!hasFullAccess && allowedCompanyIds.length === 0) {
+          setEmpresas([]);
+          setClientes([]); 
+          setLoading(false);
+          return;
+      }
+
+      // 2. Fetch Companies
       let empresasQuery = supabase.from('dre_empresa').select('*');
       
       // Enforce selected client context
       empresasQuery = empresasQuery.eq('cliente_id', selectedClient.id);
+
+      // Enforce Granular Access Control
+      if (!hasFullAccess) {
+          empresasQuery = empresasQuery.in('id', allowedCompanyIds);
+      }
 
       if (filtroNome) empresasQuery = empresasQuery.ilike('emp_nome', `%${filtroNome}%`);
       if (filtroCodigo) empresasQuery = empresasQuery.ilike('emp_cod_integra', `%${filtroCodigo}%`);
@@ -90,7 +125,7 @@ const EmpresaPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedClient, filtroNome, filtroCodigo]);
+  }, [selectedClient, user, filtroNome, filtroCodigo]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -264,7 +299,7 @@ const EmpresaPage: React.FC = () => {
             <div className="p-6 bg-gray-800/50 text-center">
                 <h2 className="text-lg font-bold text-white">Nenhuma Empresa Encontrada</h2>
                 <p className="mt-1 text-gray-400">
-                    {filtroNome || filtroCodigo ? "Tente ajustar seus filtros de busca." : "Clique em 'Adicionar Empresa' para começar."}
+                    {filtroNome || filtroCodigo ? "Tente ajustar seus filtros de busca." : "Você não possui acesso a empresas deste cliente ou nenhuma foi cadastrada."}
                 </p>
             </div>
         );

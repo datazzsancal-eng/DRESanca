@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // import { supabase } from '../../lib/supabaseClient.ts';
 import { supabase } from '../lib/supabaseClient';
+import { useAuth, ClientContext } from '../contexts/AuthContext';
 import ClientePage from './cliente/ClientePage';
 import GrupoEmpresarialPage from './grupo-empresarial/GrupoEmpresarialPage';
 import EmpresaPage from './empresa/EmpresaPage';
@@ -12,6 +13,7 @@ import TipoLinhaPage from './tipo-linha/TipoLinhaPage';
 import EstiloLinhaPage from './estilo-linha/EstiloLinhaPage';
 import TipoVisaoPage from './tipo-visao/TipoVisaoPage';
 import VisaoPage from './visao/VisaoPage';
+import UsuarioPage from './usuario/UsuarioPage';
 import * as XLSX from 'xlsx';
 
 // Type definitions
@@ -82,6 +84,7 @@ const UserIcon = () => <Icon path="M16 7a4 4 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-
 const PdfIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className="h-5 w-5 mr-1" />;
 const CsvIcon = () => <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className="h-5 w-5 mr-1" />;
 const XlsxIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" className="h-5 w-5 mr-1 text-green-500" />;
+const SwitchIcon = () => <Icon path="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" className="h-4 w-4" />;
 
 const MenuIcon = () => <Icon path="M4 6h16M4 12h16M4 18h16" />;
 const CloseIcon = () => <Icon path="M6 18L18 6M6 6l12 12" />;
@@ -160,9 +163,13 @@ interface SidebarProps {
   setActivePage: (page: string) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  userEmail?: string;
+  userName?: string | null;
+  selectedClient: ClientContext | null;
+  onChangeClient: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebarOpen, activePage, setActivePage, isCollapsed, onToggleCollapse }) => {
+const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebarOpen, activePage, setActivePage, isCollapsed, onToggleCollapse, userEmail, userName, selectedClient, onChangeClient }) => {
   const [openMenus, setOpenMenus] = useState<{ [key: string]: boolean }>({
     'analise-modelos': true,
     estrutura: true,
@@ -250,12 +257,30 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebar
           })}
         </nav>
         <div className="p-2 border-t border-gray-700 shrink-0">
+          {/* Selected Client Display */}
+          {!isCollapsed && selectedClient && (
+            <div className="flex items-center justify-between p-2 mb-2 bg-gray-700/50 rounded-lg border border-gray-600">
+                <div className="truncate flex-1">
+                    <p className="text-[10px] uppercase text-gray-400 font-bold tracking-wider">Cliente Atual</p>
+                    <p className="text-sm font-semibold text-white truncate" title={selectedClient.cli_nome || ''}>{selectedClient.cli_nome}</p>
+                </div>
+                <button onClick={onChangeClient} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-600 rounded-full transition-colors ml-2" title="Trocar Cliente">
+                    <SwitchIcon />
+                </button>
+            </div>
+          )}
+          {isCollapsed && (
+             <button onClick={onChangeClient} className="flex justify-center w-full p-2 mb-2 text-gray-400 hover:text-white hover:bg-gray-600 rounded-lg transition-colors" title={`Cliente: ${selectedClient?.cli_nome || 'Nenhum'}`}>
+                <SwitchIcon />
+            </button>
+          )}
+
           <div className={`flex items-center p-2 rounded-lg ${isCollapsed ? 'justify-center' : ''}`}>
             <UserIcon />
             {!isCollapsed && (
-              <div className="ml-3">
-                <p className="text-sm font-semibold">Admin</p>
-                <p className="text-xs text-gray-400">admin@sancal.com</p>
+              <div className="ml-3 truncate">
+                <p className="text-sm font-semibold">{userName || 'Usuário'}</p>
+                <p className="text-xs text-gray-400 truncate w-32" title={userEmail}>{userEmail || '...'}</p>
               </div>
             )}
           </div>
@@ -271,6 +296,15 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebar
             {isCollapsed ? <ChevronDoubleRightIcon /> : <ChevronDoubleLeftIcon />}
             {!isCollapsed && <span className="ml-2">Recolher</span>}
           </button>
+          {!isCollapsed && (
+            <div className="flex justify-center pt-4 pb-2">
+                <img 
+                src="https://raw.githubusercontent.com/synapiens/uteis/refs/heads/main/logomarca/Synapiens_logo_hor.png" 
+                alt="Synapiens" 
+                className="h-8 w-auto"
+                />
+            </div>
+          )}
         </div>
       </aside>
     </>
@@ -387,10 +421,10 @@ const DreTable: React.FC<DreTableProps> = ({ data, selectedPeriod }) => {
 
 
 // Main DashboardPage component
-interface DashboardPageProps {
-  onLogout: () => void;
-}
-const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
+// Removed onLogout from props as we use useAuth now
+const DashboardPage: React.FC = () => {
+  const { signOut, user, profile, selectedClient, selectClient } = useAuth();
+  
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState('dashboard');
@@ -446,17 +480,30 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
       // Fetch visoes from Supabase table
       setVisoesLoading(true);
       try {
-          const { data, error: visaoError } = await supabase
+          // If we have a selectedClient, filter visions by it
+          let query = supabase
             .from('dre_visao')
             .select('id, vis_nome, vis_descri, cliente_id')
             .order('vis_nome');
+          
+          if (selectedClient) {
+              query = query.eq('cliente_id', selectedClient.id);
+          }
+
+          const { data, error: visaoError } = await query;
+
           if (visaoError) throw visaoError;
           if (data && data.length > 0) {
               setVisoes(data);
               setSelectedVisao(data[0].id);
           } else {
-              currentWarnings.push('Nenhuma visão foi encontrada na base de dados.');
+              if (selectedClient) {
+                  currentWarnings.push(`Nenhuma visão encontrada para o cliente ${selectedClient.cli_nome}.`);
+              } else {
+                  currentWarnings.push('Nenhuma visão foi encontrada na base de dados.');
+              }
               setVisoes([]);
+              setSelectedVisao('');
           }
       } catch (err: any) {
           const errorMessage = err.message || 'Verifique a conexão ou as permissões da tabela.';
@@ -475,7 +522,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
     if (activePage === 'dashboard') {
         fetchDropdownData();
     }
-  }, [activePage]);
+  }, [activePage, selectedClient]); // Re-fetch if selectedClient changes
   
   // Fetch Template Configurations (Cards and Line Styles) when selectedVisao changes
   useEffect(() => {
@@ -619,7 +666,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
         }
         
         // Fetch visibility restrictions (can be cached or fetched once, but doing here for simplicity/safety)
-        // If this proves slow, we can move it up.
         const { data: restrictedLines, error: restError } = await supabase
             .from('dre_template_linhas')
             .select('id, visao_id')
@@ -891,13 +937,17 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
   return (
     <div className="flex h-screen bg-gray-900 text-gray-300">
       <Sidebar 
-        onLogout={onLogout} 
+        onLogout={signOut} 
         isSidebarOpen={isSidebarOpen} 
         setIsSidebarOpen={setIsSidebarOpen}
         activePage={activePage}
         setActivePage={setActivePage}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
+        userEmail={user?.email}
+        userName={profile?.full_name}
+        selectedClient={selectedClient}
+        onChangeClient={() => selectClient(null)}
       />
       <div className="flex flex-col flex-1 w-full overflow-y-auto">
         <header className="flex items-center justify-between h-16 px-4 bg-gray-800 border-b border-gray-700 lg:justify-end sticky top-0 z-20">
@@ -1017,7 +1067,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onLogout }) => {
           {activePage === 'tipo-linha' && <TipoLinhaPage />}
           {activePage === 'estilo-linha' && <EstiloLinhaPage />}
           {activePage === 'tipo-visao' && <TipoVisaoPage />}
-          {(activePage === 'usuarios' || activePage === 'permissoes') && (
+          {activePage === 'usuarios' && <UsuarioPage />}
+          {activePage === 'permissoes' && (
              <div className="flex items-center justify-center h-full p-8 text-center bg-gray-800 border border-gray-700 rounded-lg">
                 <div>
                     <h2 className="text-xl font-bold text-white">Em Desenvolvimento</h2>

@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 
@@ -59,52 +59,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchUserClients = async (userId: string) => {
     try {
-      // Fetch clients linked to this user via rel_prof_cli_empr
-      const { data, error } = await supabase
+      // OTIMIZAÇÃO: Dividir em duas queries para evitar Timeout de RLS em Joins complexos
+      
+      // 1. Buscar IDs dos relacionamentos ativos
+      const { data: relData, error: relError } = await supabase
         .from('rel_prof_cli_empr')
-        .select('cliente_id, dre_cliente(id, cli_nome)')
+        .select('cliente_id')
         .eq('profile_id', userId)
         .eq('rel_situacao_id', 'ATV')
         .not('cliente_id', 'is', null);
 
-      if (error) throw error;
+      if (relError) throw relError;
 
-      // Extract unique clients
-      const clientsMap = new Map<string, ClientContext>();
-      data?.forEach((item: any) => {
-        if (item.dre_cliente) {
-          clientsMap.set(item.dre_cliente.id, item.dre_cliente);
-        }
-      });
+      if (!relData || relData.length === 0) {
+          setAvailableClients([]);
+          setSelectedClientState(null);
+          return;
+      }
+
+      // Extrair IDs únicos
+      const clientIds = Array.from(new Set(relData.map((item: any) => item.cliente_id)));
+
+      // 2. Buscar detalhes dos clientes
+      const { data: clientsData, error: clientsError } = await supabase
+        .from('dre_cliente')
+        .select('id, cli_nome')
+        .in('id', clientIds)
+        .order('cli_nome');
+
+      if (clientsError) throw clientsError;
       
-      const clients = Array.from(clientsMap.values());
+      const clients = clientsData || [];
       setAvailableClients(clients);
 
-      // Auto-selection Logic
+      // Lógica de Auto-seleção
       if (clients.length === 1) {
-        // If only one client, force select it
         selectClient(clients[0]);
       } else if (clients.length > 1) {
-        // If multiple, check localStorage for persistence
+        // Verificar persistência
         const stored = localStorage.getItem('dre_selected_client');
         if (stored) {
           try {
             const parsed = JSON.parse(stored);
-            // Verify if the stored client is still valid for this user
             const isValid = clients.find(c => c.id === parsed.id);
             if (isValid) {
               setSelectedClientState(isValid);
             } else {
-              setSelectedClientState(null); // Invalid storage, reset
+              setSelectedClientState(null);
             }
           } catch (e) {
             setSelectedClientState(null);
           }
         } else {
-          setSelectedClientState(null); // No storage, force selection
+          setSelectedClientState(null);
         }
       } else {
-        setSelectedClientState(null); // No clients
+        setSelectedClientState(null);
       }
 
     } catch (error) {
@@ -123,57 +133,104 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Check active session
+    let mounted = true;
+
     const initSession = async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          await Promise.all([
-            fetchProfile(session.user.id),
-            fetchUserClients(session.user.id)
-          ]);
+        try {
+            // Timeout de segurança aumentado para 15s
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Auth Timeout")), 15000));
+            const sessionPromise = supabase.auth.getSession();
+            
+            const result: any = await Promise.race([sessionPromise, timeoutPromise]);
+            const { data: { session }, error } = result;
+
+            if (error) throw error;
+
+            if (mounted) {
+                setSession(session);
+                setUser(session?.user ?? null);
+                
+                if (session?.user) {
+                    // Fetch paralelo com timeout de 10s para dados
+                    const dataFetchPromise = Promise.all([
+                        fetchProfile(session.user.id),
+                        fetchUserClients(session.user.id)
+                    ]);
+                    
+                    await Promise.race([
+                        dataFetchPromise,
+                        new Promise((r) => setTimeout(r, 10000)) 
+                    ]);
+                }
+            }
+        } catch (err) {
+            console.warn("Auth initialization warning:", err);
+        } finally {
+            if (mounted) {
+                setLoading(false);
+            }
         }
-        setLoading(false);
     };
+
     initSession();
 
-    // Listen for changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
       setSession(session);
       setUser(session?.user ?? null);
+
       if (session?.user) {
-        // If switching users or logging in, re-fetch everything
-        setLoading(true);
-        await Promise.all([
-            fetchProfile(session.user.id),
-            fetchUserClients(session.user.id)
-        ]);
-        setLoading(false);
+        try {
+            await Promise.all([
+                fetchProfile(session.user.id),
+                fetchUserClients(session.user.id)
+            ]);
+        } catch (e) {
+            console.error("Auth change fetch error:", e);
+        }
       } else {
         setProfile(null);
         setAvailableClients([]);
-        selectClient(null); // Clear selection on logout
-        setLoading(false);
+        selectClient(null);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setProfile(null);
-    setUser(null);
-    setSession(null);
-    setAvailableClients([]);
-    selectClient(null);
+    try {
+        // Timeout curto para logout (2s) para evitar travamento
+        await Promise.race([
+            supabase.auth.signOut(),
+            new Promise(resolve => setTimeout(resolve, 2000))
+        ]);
+    } catch (error) {
+        console.error("Sign out error:", error);
+    } finally {
+        setProfile(null);
+        setUser(null);
+        setSession(null);
+        setAvailableClients([]);
+        selectClient(null);
+        
+        // Limpeza forçada do LocalStorage
+        localStorage.removeItem('dre_selected_client');
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+                localStorage.removeItem(key);
+            }
+        });
+        window.location.reload(); // Recarregar para garantir estado limpo
+    }
   };
 
-  const value = {
+  // Memoize o valor do contexto para evitar re-renderizações desnecessárias
+  const value = useMemo(() => ({
     session,
     user,
     profile,
@@ -182,7 +239,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     selectedClient,
     selectClient,
     signOut,
-  };
+  }), [session, user, profile, loading, availableClients, selectedClient]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

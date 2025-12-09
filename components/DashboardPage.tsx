@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth, ClientContext } from '../contexts/AuthContext';
 import ClientePage from './cliente/ClientePage';
+import GrupoEmpresarialPage from './grupo-empresarial/GrupoEmpresarialPage';
 import EmpresaPage from './empresa/EmpresaPage';
 import PlanoContabilPage from './plano-contabil/PlanoContabilPage';
 import TemplatePage from './template/TemplatePage';
@@ -124,6 +125,7 @@ const navigationData: NavItem[] = [
     icon: StructureIcon,
     children: [
       { id: 'cliente', label: 'Cliente', icon: () => <></> },
+      { id: 'grupo-empresarial', label: 'Grupo Empresarial', icon: () => <></> },
       { id: 'empresa', label: 'Empresa', icon: () => <></> },
       { id: 'plano-contabil', label: 'Plano Contábil', icon: () => <></> },
     ],
@@ -729,4 +731,355 @@ const DashboardPage: React.FC = () => {
                 isItalic,
                 indentationLevel
             };
+        });
         
+        setDreData(formattedData);
+    };
+
+    processDisplayData();
+  }, [rawDreData, selectedVisao, lineStyles]);
+
+  
+  const pageTitles: { [key: string]: string } = {
+    dashboard: 'Dashboard',
+    visao: 'Gestão de Visões',
+    cliente: 'Gestão de Clientes',
+    'grupo-empresarial': 'Gestão de Grupos Empresariais',
+    empresa: 'Gestão de Empresas',
+    'plano-contabil': 'Gestão de Plano Contábil',
+    templates: 'Gestão de Templates',
+    situacao: 'Configurações - Situação',
+    'tipo-linha': 'Configurações - Tipo Linha DRE',
+    'estilo-linha': 'Configurações - Estilo Linha DRE',
+    'tipo-visao': 'Configurações - Tipo Visão DRE',
+    usuarios: 'Administração - Usuários',
+    permissoes: 'Administração - Permissões',
+  };
+
+  // --- Helper to generate standardized filenames ---
+  const getExportFileName = (extension: string) => {
+    const visao = visoes.find(v => v.id === selectedVisao);
+    const visaoNome = visao ? visao.vis_nome.replace(/\s+/g, '') : 'DRE';
+    return `${visaoNome}_${selectedPeriod}.${extension}`;
+  }
+
+  // --- Export Handlers ---
+  const handleExportCsv = () => {
+    if (dreData.length === 0) return;
+
+    const fileName = getExportFileName('csv');
+    const separator = ';';
+    
+    const allMonths = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const currentMonthIndex = selectedPeriod ? (Number(selectedPeriod) % 100) : 12;
+    const visibleMonths = allMonths.slice(0, currentMonthIndex);
+    
+    const headers = ["Descrição", ...visibleMonths, "Acumulado", "%"];
+    
+    const formatValue = (val: any) => {
+        if (typeof val === 'number') {
+            return `"${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}"`;
+        }
+        if (typeof val === 'string') {
+            return `"${val.replace(/"/g, '""')}"`;
+        }
+        if (val === null || val === undefined) {
+             return '""';
+        }
+        return '""';
+    };
+
+    const csvRows = [headers.map(h => `"${h}"`).join(separator)];
+    
+    dreData.forEach(row => {
+        const monthlyValues = visibleMonths.map(m => {
+            const val = row[m.toLowerCase() as keyof DreDataRow] as number || 0;
+            return formatValue(val);
+        });
+        
+        const values = [
+            formatValue(row.desc),
+            ...monthlyValues,
+            formatValue(row.accumulated || 0),
+            formatValue(row.percentage || 0)
+        ];
+        csvRows.push(values.join(separator));
+    });
+
+    const csvString = "\uFEFF" + csvRows.join("\n");
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportXlsx = () => {
+     if (dreData.length === 0) return;
+
+     const fileName = getExportFileName('xlsx');
+     
+     const allMonths = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+     const currentMonthIndex = selectedPeriod ? (Number(selectedPeriod) % 100) : 12;
+     const visibleMonths = allMonths.slice(0, currentMonthIndex);
+
+     const headers = ["Descrição", ...visibleMonths, "Acumulado", "%"];
+     
+     const formatNumber = (val: number | null | undefined) => (val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+     const formatPercentage = (val: number | null | undefined) => `${(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+
+     const dataForSheet = dreData.map(row => {
+        const monthlyValues = visibleMonths.map(m => {
+            const val = row[m.toLowerCase() as keyof DreDataRow] as number || 0;
+            return formatNumber(val);
+        });
+
+        return [
+            row.desc,
+            ...monthlyValues,
+            formatNumber(row.accumulated), 
+            formatPercentage(row.percentage)
+        ];
+     });
+     
+     dataForSheet.unshift(headers as any);
+
+     const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
+     
+     const wscols = [
+        { wch: 40 }, // Descrição
+        ...visibleMonths.map(() => ({ wch: 15 })), // Months
+        { wch: 18 }, // Acumulado
+        { wch: 10 }  // %
+     ];
+     ws['!cols'] = wscols;
+
+     const wb = XLSX.utils.book_new();
+     XLSX.utils.book_append_sheet(wb, ws, "DRE");
+     
+     XLSX.writeFile(wb, fileName);
+  };
+
+  const processCardData = (posicao: number) => {
+      const config = cardConfigs.find(c => c.crd_posicao === posicao);
+      if (!config || !config.dre_linha_seq) {
+          return {
+              title: `Card ${posicao}`,
+              subtitle: 'Não configurado',
+              value: '-',
+              percentage: '-',
+              variation: 0
+          };
+      }
+
+      // Find the data row based on seq (use dreData because it's already formatted/filtered, but logic here relies on raw values usually found in rawDreData or DreData)
+      // Since DreDataRow has the raw values, we can use dreData.
+      const row = dreData.find(r => r.seq === config.dre_linha_seq);
+      if (!row) {
+           return {
+              title: config.tit_card_ajust || `Card ${posicao}`,
+              subtitle: 'Sem dados',
+              value: '-',
+              percentage: '-',
+              variation: 0
+          };
+      }
+
+      // Format Value 1
+      const val1Type = config.vlr_linha_01;
+      const rawVal1 = val1Type === 'ACUM' ? (row.accumulated || 0) : (row.percentage || 0);
+      const formattedVal1 = val1Type === 'ACUM' 
+        ? `R$ ${rawVal1.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2, notation: "compact" })}`
+        : `${rawVal1.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+
+      // Format Value 2 (Subtitle/Percentage text)
+      const val2Type = config.vlr_linha_02;
+      const rawVal2 = val2Type === 'ACUM' ? (row.accumulated || 0) : (row.percentage || 0);
+      const formattedVal2 = val2Type === 'ACUM' 
+         ? `R$ ${rawVal2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+         : `${rawVal2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+
+      // Calculate Variation (Current Month vs Previous Month)
+      let variation = 0;
+      if (selectedPeriod) {
+          const monthIndex = (Number(selectedPeriod) % 100); // 1-12
+          if (monthIndex > 1) {
+               const monthKeys: (keyof DreDataRow)[] = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+               const currentKey = monthKeys[monthIndex - 1];
+               const prevKey = monthKeys[monthIndex - 2];
+               
+               const currentVal = (row[currentKey] as number) || 0;
+               const prevVal = (row[prevKey] as number) || 0;
+               
+               if (prevVal !== 0) {
+                   variation = ((currentVal - prevVal) / Math.abs(prevVal)) * 100;
+               } else if (currentVal !== 0) {
+                   variation = 100; 
+               }
+          }
+      }
+
+      return {
+          title: config.tit_card_ajust || row.desc,
+          subtitle: 'vs Mês Anterior',
+          value: formattedVal1,
+          percentage: formattedVal2,
+          variation: variation
+      };
+  };
+
+
+  return (
+    <div className="flex h-screen bg-gray-900 text-gray-300">
+      <Sidebar 
+        onLogout={signOut} 
+        isSidebarOpen={isSidebarOpen} 
+        setIsSidebarOpen={setIsSidebarOpen}
+        activePage={activePage}
+        setActivePage={setActivePage}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
+        userEmail={user?.email}
+        userName={profile?.full_name}
+        selectedClient={selectedClient}
+        onChangeClient={() => selectClient(null)}
+      />
+      <div className="flex flex-col flex-1 w-full overflow-y-auto">
+        <header className="flex items-center justify-between h-16 px-4 bg-gray-800 border-b border-gray-700 lg:justify-end sticky top-0 z-20">
+            <button className="text-gray-300 lg:hidden" onClick={() => setIsSidebarOpen(true)}>
+                <MenuIcon />
+            </button>
+            <h1 className="text-lg font-semibold text-white">{pageTitles[activePage] || 'Dashboard'}</h1>
+        </header>
+
+        <main className="p-4">
+          {activePage === 'dashboard' && (
+            <div>
+              {/* Sticky container for cards and filters */}
+              <div className="sticky top-16 z-10 bg-gray-900 -mx-4 px-4 py-4 mb-4">
+                  {(error || warning) && (
+                    <div className={`p-3 mb-4 text-sm rounded-lg ${error ? 'text-red-400 bg-red-900/50 border border-red-800' : 'text-yellow-400 bg-yellow-900/50 border border-yellow-800'}`}>
+                        {error || warning}
+                    </div>
+                  )}
+                  {/* Stat Cards - Dynamically Rendered */}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {[1, 2, 3, 4].map(pos => {
+                        const data = processCardData(pos);
+                        return (
+                            <StatCard 
+                                key={pos}
+                                title={data.title} 
+                                subtitle={data.subtitle} 
+                                value={data.value} 
+                                percentage={data.percentage} 
+                                variation={data.variation} 
+                            />
+                        );
+                    })}
+                  </div>
+
+                  {/* Filters and Title */}
+                  <div className="p-4 mt-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md">
+                    <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+                      <h2 className="text-lg font-bold text-white">DRE VISÃO CONSOLIDADA</h2>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select 
+                          value={selectedPeriod}
+                          onChange={(e) => setSelectedPeriod(Number(e.target.value))}
+                          disabled={periodsLoading || periods.length === 0}
+                          className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                        >
+                          {periodsLoading ? (
+                            <option>Carregando...</option>
+                          ) : periods.length > 0 ? (
+                            periods.map(p => <option key={p.retorno} value={p.retorno}>{p.display}</option>)
+                          ) : (
+                            <option>Sem períodos</option>
+                          )}
+                        </select>
+                        <select
+                          value={selectedVisao}
+                          onChange={(e) => setSelectedVisao(e.target.value)}
+                          disabled={visoesLoading || visoes.length === 0}
+                          className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                        >
+                          {visoesLoading ? (
+                            <option>Carregando...</option>
+                          ) : visoes.length > 0 ? (
+                            visoes.map(v => (
+                              <option key={v.id} value={v.id} title={v.vis_descri || v.vis_nome}>
+                                {v.vis_nome}
+                              </option>
+                            ))
+                          ) : (
+                            <option>Nenhuma visão</option>
+                          )}
+                        </select>
+                        <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                          <PdfIcon /> PDF
+                        </button>
+                        <button 
+                            onClick={handleExportCsv}
+                            disabled={dreData.length === 0}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <CsvIcon /> CSV
+                        </button>
+                        <button 
+                            onClick={handleExportXlsx}
+                            disabled={dreData.length === 0}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <XlsxIcon /> XLSX
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+              </div>
+              
+              {/* Data Table */}
+              <div className="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700 min-h-[200px] flex items-center justify-center">
+                {loading ? (
+                    <div className="flex items-center justify-center"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando dados...</span></div>
+                ) : dreData.length > 0 ? (
+                    <DreTable data={dreData} selectedPeriod={selectedPeriod} />
+                ) : (
+                    <div className="text-center text-gray-400">
+                        {(!selectedPeriod || !selectedVisao) ? "Selecione os filtros para visualizar os dados." : "Nenhum dado para exibir."}
+                    </div>
+                )}
+              </div>
+            </div>
+          )}
+          {activePage === 'visao' && <VisaoPage />}
+          {activePage === 'cliente' && <ClientePage />}
+          {activePage === 'grupo-empresarial' && <GrupoEmpresarialPage />}
+          {activePage === 'empresa' && <EmpresaPage />}
+          {activePage === 'plano-contabil' && <PlanoContabilPage />}
+          {activePage === 'templates' && <TemplatePage />}
+          {activePage === 'situacao' && <SituacaoPage />}
+          {activePage === 'tipo-linha' && <TipoLinhaPage />}
+          {activePage === 'estilo-linha' && <EstiloLinhaPage />}
+          {activePage === 'tipo-visao' && <TipoVisaoPage />}
+          {activePage === 'usuarios' && <UsuarioPage />}
+          {activePage === 'permissoes' && (
+             <div className="flex items-center justify-center h-full p-8 text-center bg-gray-800 border border-gray-700 rounded-lg">
+                <div>
+                    <h2 className="text-xl font-bold text-white">Em Desenvolvimento</h2>
+                    <p className="mt-2 text-gray-400">Esta funcionalidade estará disponível em breve.</p>
+                </div>
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+};
+
+export default DashboardPage;

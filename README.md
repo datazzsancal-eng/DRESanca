@@ -101,3 +101,28 @@ View your app in AI Studio: https://ai.studio/apps/drive/1n-ICTzru9sLpW3T6cjBNwT
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+
+   -------------------------------------------------------------------
+
+   ## ⚙️ Instalação e Execução
+
+1.  **Pré-requisitos:** Node.js instalado.
+2.  **Instalar dependências:**
+    ```bash
+    npm install
+    ```
+3.  **Configurar Ambiente:**
+    Crie um arquivo `.env.local` na raiz com as chaves do Supabase:
+    ```env
+    VITE_SUPABASE_URL=sua_url_supabase
+    VITE_SUPABASE_ANON_KEY=sua_chave_anonima
+    ```
+4.  **Rodar localmente:**
+    ```bash
+    npm run dev
+    ```
+5.  **Build para Produção:**
+    ```bash
+    npm run build
+    ```

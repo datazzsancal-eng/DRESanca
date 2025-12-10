@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
@@ -137,8 +136,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initSession = async () => {
         try {
-            // Timeout de segurança aumentado para 15s
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Auth Timeout")), 15000));
+            // Timeout de segurança aumentado para 40s (era 15s)
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Auth Timeout")), 40000));
             const sessionPromise = supabase.auth.getSession();
             
             const result: any = await Promise.race([sessionPromise, timeoutPromise]);

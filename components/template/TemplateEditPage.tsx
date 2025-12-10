@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -140,7 +141,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
         const { data: linhasDataFromDb, error: linhasError } = await supabase.from('dre_template_linhas').select('*').eq('dre_template_id', templateId).order('dre_linha_seq');
         if (linhasError) throw linhasError;
         
-        const parsedLinhas = linhasDataFromDb.map(l => ({ ...l, _internalKey: l.id }));
+        const parsedLinhas: TemplateLinhaForState[] = linhasDataFromDb.map((l: any) => ({ ...l, _internalKey: l.id }));
         setLinhasData(parsedLinhas);
       }
     } catch (err: any) {
@@ -748,7 +749,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                         </select>
                     </td>
                     <td className="px-2 py-1 text-center"><input type="checkbox" checked={linha.dre_linha_visivel === 'S'} onChange={(e) => handleLinhaChange(index, 'dre_linha_visivel', e.target.checked ? 'S' : 'N')} className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500" /></td>
-                    <td className="px-2 py-1 text-center"><button onClick={() => removeLinha(linha._internalKey)} className="text-red-500 hover:text-red-400"><i className="fas fa-times"></i></button></td>
+                    <td className="px-2 py-1 text-center"><button onClick={() => removeLinha(linha._internalKey as string | number)} className="text-red-500 hover:text-red-400"><i className="fas fa-times"></i></button></td>
                   </tr>
                 )
               })}

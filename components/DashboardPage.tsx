@@ -298,7 +298,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebar
           {!isCollapsed && (
             <div className="flex justify-center pt-4 pb-2">
                 <img 
-                src="https://raw.githubusercontent.com/synapiens/uteis/refs/heads/main/logomarca/Synapiens_logo_hor.png" 
+                src="https://raw.githubusercontent.com/synapiens/uteis/refs/heads/main/LogoSynapiens/Synapiens_logo_hor.png" 
                 alt="Synapiens" 
                 className="h-8 w-auto"
                 />
@@ -633,21 +633,41 @@ const DashboardPage: React.FC = () => {
                 throw new Error(`Erro na API: ${response.status} - ${errorText || response.statusText}`);
             }
 
-            const data = await response.json();
+            // Fix: Handle empty body to avoid JSON parse error
+            const text = await response.text();
+            let data: any[] = [];
+            
+            if (text && text.trim().length > 0) {
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    console.warn("Falha ao analisar JSON da API:", e);
+                    data = [];
+                }
+            } else {
+                data = [];
+            }
             
             if (!Array.isArray(data)) {
-                throw new Error("A resposta da API não é um formato válido (array).");
+                console.warn("Resposta da API não é um array:", data);
+                data = [];
             }
             setRawDreData(data);
             
             if (data.length === 0) {
-                setWarning("Nenhum dado encontrado para os filtros selecionados.")
+                setWarning("Sem Dados no Momento");
             }
 
         } catch (err: any) {
             console.error("Failed to fetch DRE data from webhook:", err);
-            setError(`Falha ao carregar dados do DRE: ${err.message}. Verifique o endpoint da API.`);
-            setRawDreData([]);
+            // Handle unexpected end of JSON specifically if it leaks through
+            if (err.message && err.message.includes("Unexpected end of JSON input")) {
+                 setRawDreData([]);
+                 setWarning("Sem Dados no Momento");
+            } else {
+                 setError(`Falha ao carregar dados do DRE: ${err.message}. Verifique o endpoint da API.`);
+                 setRawDreData([]);
+            }
         } finally {
             setLoading(false);
         }
@@ -1072,8 +1092,8 @@ const DashboardPage: React.FC = () => {
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                     </svg>
                                 </div>
-                                <h3 className="text-xl font-bold text-white mb-2">Não há dados</h3>
-                                <p className="text-gray-400 max-w-sm">Não encontramos registros para o período selecionado.</p>
+                                <h3 className="text-xl font-bold text-white mb-2">Sem Dados no Momento</h3>
+                                <p className="text-gray-400 max-w-sm">Não encontramos registros financeiros para este cliente no período selecionado.</p>
                             </>
                         )}
                     </div>

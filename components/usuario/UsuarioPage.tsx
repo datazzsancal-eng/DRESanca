@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../../lib/supabaseClient';
 import { createClient } from '@supabase/supabase-js';
@@ -190,18 +191,15 @@ const UsuarioPage: React.FC = () => {
                     const details = await fetchClientDetails(cliId);
                     
                     // Popular Empresas Selecionadas
-                    const userEmpresas = new Set<string>(
-                        relations
+                    const userEmpresas: Set<string> = new Set(
+                        (relations as any[])
                             .filter((r: any) => r.cliente_id === cliId && r.empresa_id)
                             .map((r: any) => r.empresa_id as string)
                     );
                     newSelectedCompanies[cliId] = userEmpresas;
 
                     // Popular Raízes Selecionadas
-                    // Lógica: Se tem pelo menos uma empresa da raiz selecionada, a raiz vem marcada?
-                    // Ou melhor: Marcar todas as raízes cujas empresas estão na lista?
-                    // Vamos marcar como ativa qualquer raiz que tenha empresas vinculadas OU se for legado (sem empresa_id), marcar tudo.
-                    const activeRoots = new Set<string>();
+                    const activeRoots: Set<string> = new Set();
                     
                     details.cnpjs.forEach(root => {
                         // Verifica se alguma empresa desta raiz está selecionada
@@ -212,8 +210,8 @@ const UsuarioPage: React.FC = () => {
                     });
                     
                     // Caso de borda: Se não tem empresas específicas (acesso total legado), marcar tudo
-                    const specificEmpresasCount = relations.filter((r: any) => r.cliente_id === cliId && r.empresa_id).length;
-                    if (specificEmpresasCount === 0 && relations.some((r: any) => r.cliente_id === cliId)) {
+                    const specificEmpresasCount = (relations as any[]).filter((r: any) => r.cliente_id === cliId && r.empresa_id).length;
+                    if (specificEmpresasCount === 0 && (relations as any[]).some((r: any) => r.cliente_id === cliId)) {
                          // Legado: seleciona tudo
                          details.cnpjs.forEach(r => activeRoots.add(r.cnpj_raiz));
                          details.empresas.forEach(e => userEmpresas.add(e.id));

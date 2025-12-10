@@ -1,10 +1,9 @@
-
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Cliente { id: string; cli_nome: string | null; }
 interface CnpjRaiz { cnpj_raiz: string; reduz_emp: string | null; }
@@ -64,6 +63,8 @@ interface TemplateEditPageProps {
 }
 
 const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack }) => {
+  const { user } = useAuth();
+  
   const [headerData, setHeaderData] = useState<TemplateHeader>(initialHeaderState);
   const [linhasData, setLinhasData] = useState<TemplateLinhaForState[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -76,6 +77,12 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // Permissions State for Edit Page
+  const [userPermissions, setUserPermissions] = useState<{
+      allowedRoots: Set<string>,
+      clientFullAccess: Set<string>
+  }>({ allowedRoots: new Set(), clientFullAccess: new Set() });
+
   // View Modal State
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [viewData, setViewData] = useState<TemplateViewData[]>([]);
@@ -117,25 +124,65 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
 
 
   const fetchData = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     setError(null);
     try {
-      const [clientesRes, tiposRes, estilosRes] = await Promise.all([
-        supabase.from('dre_cliente').select('*').order('cli_nome'),
+      // 1. Fetch User Permissions & Dropdown Data
+      const [relRes, tiposRes, estilosRes] = await Promise.all([
+        supabase.from('rel_prof_cli_empr').select('cliente_id, empresa_id, dre_empresa(emp_cnpj_raiz)').eq('profile_id', user.id).eq('rel_situacao_id', 'ATV'),
         supabase.from('tab_tipo_linha').select('*').order('tipo_linha'),
         supabase.from('tab_estilo_linha').select('*').order('estilo_nome'),
       ]);
-      if (clientesRes.error) throw clientesRes.error;
+
+      if (relRes.error) throw relRes.error;
       if (tiposRes.error) throw tiposRes.error;
       if (estilosRes.error) throw estilosRes.error;
 
-      setClientes(clientesRes.data);
+      // Process Permissions
+      const allowedClientIds = new Set<string>();
+      const clientFullAccess = new Set<string>();
+      const allowedRoots = new Set<string>();
+
+      if (relRes.data) {
+          relRes.data.forEach((r: any) => {
+              if (r.cliente_id) allowedClientIds.add(r.cliente_id);
+              if (r.empresa_id === null) {
+                  if (r.cliente_id) clientFullAccess.add(r.cliente_id);
+              } else if (r.dre_empresa?.emp_cnpj_raiz) {
+                  allowedRoots.add(r.dre_empresa.emp_cnpj_raiz);
+              }
+          });
+      }
+      
+      setUserPermissions({ allowedRoots, clientFullAccess });
+
+      // Fetch Allowed Clients
+      if (allowedClientIds.size > 0) {
+          const { data: clientesData, error: cliError } = await supabase
+            .from('dre_cliente')
+            .select('*')
+            .in('id', Array.from(allowedClientIds))
+            .order('cli_nome');
+          
+          if (cliError) throw cliError;
+          setClientes(clientesData || []);
+      } else {
+          setClientes([]);
+      }
+
       setTiposLinha(tiposRes.data);
       setEstilosLinha(estilosRes.data);
 
       if (templateId !== 'new') {
         const { data: templateData, error: templateError } = await supabase.from('dre_template').select('*').eq('id', templateId).single();
         if (templateError) throw templateError;
+        
+        // Security check: User must have access to this template's client
+        if (!allowedClientIds.has(templateData.cliente_id)) {
+            throw new Error("Você não tem permissão para editar este template.");
+        }
+
         setHeaderData(templateData);
 
         const { data: linhasDataFromDb, error: linhasError } = await supabase.from('dre_template_linhas').select('*').eq('dre_template_id', templateId).order('dre_linha_seq');
@@ -149,11 +196,11 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
     } finally {
       setLoading(false);
     }
-  }, [templateId]);
+  }, [templateId, user]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   
-  // Fetch CNPJs and Visões when Cliente changes
+  // Fetch CNPJs and Visões when Cliente changes (Filtered by Permissions)
   useEffect(() => {
     const fetchClientData = async () => {
       if (!headerData.cliente_id) { 
@@ -163,16 +210,29 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
           return; 
       }
       
-      const { data: cnpjData, error: cnpjError } = await supabase.from('viw_cnpj_raiz').select('cnpj_raiz, reduz_emp').eq('cliente_id', headerData.cliente_id);
-      if (cnpjError) console.error("Erro ao buscar CNPJs:", cnpjError);
-      setCnpjs(cnpjData || []);
+      try {
+          const { data: cnpjData, error: cnpjError } = await supabase.from('viw_cnpj_raiz').select('cnpj_raiz, reduz_emp').eq('cliente_id', headerData.cliente_id);
+          if (cnpjError) throw cnpjError;
+          
+          let filteredCnpjs = cnpjData || [];
+          
+          // Apply filters if user does NOT have full access to this client
+          if (!userPermissions.clientFullAccess.has(headerData.cliente_id)) {
+              filteredCnpjs = filteredCnpjs.filter(c => userPermissions.allowedRoots.has(c.cnpj_raiz));
+          }
+          
+          setCnpjs(filteredCnpjs);
 
-      const { data: visaoData, error: visaoError } = await supabase.from('dre_visao').select('id, vis_nome').eq('cliente_id', headerData.cliente_id).order('vis_nome');
-      if (visaoError) console.error("Erro ao buscar Visões:", visaoError);
-      setVisoes(visaoData || []);
+          const { data: visaoData, error: visaoError } = await supabase.from('dre_visao').select('id, vis_nome').eq('cliente_id', headerData.cliente_id).order('vis_nome');
+          if (visaoError) throw visaoError;
+          setVisoes(visaoData || []);
+
+      } catch (err: any) {
+          console.error("Erro ao buscar dados do cliente:", err);
+      }
     };
     fetchClientData();
-  }, [headerData.cliente_id]);
+  }, [headerData.cliente_id, userPermissions]);
   
   useEffect(() => {
     const fetchInitialPlanoContas = async () => {

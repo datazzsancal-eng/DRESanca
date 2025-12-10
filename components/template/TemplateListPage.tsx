@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Cliente {
   id: string;
@@ -38,6 +38,8 @@ interface TemplateListPageProps {
 }
 
 export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onAddNew, onManageCards }) => {
+  const { user } = useAuth();
+  
   // State management
   const [templates, setTemplates] = useState<Template[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -67,30 +69,95 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
 
   // Data fetching
   const fetchData = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     setError(null);
     try {
+      // 1. Fetch User Permissions
+      const { data: relData, error: relError } = await supabase
+        .from('rel_prof_cli_empr')
+        .select(`
+            cliente_id,
+            empresa_id,
+            dre_empresa ( emp_cnpj_raiz )
+        `)
+        .eq('profile_id', user.id)
+        .eq('rel_situacao_id', 'ATV');
+
+      if (relError) throw relError;
+
+      // 2. Process Permissions
+      const allowedClientIds = new Set<string>();
+      const clientFullAccess = new Set<string>();
+      const allowedRoots = new Set<string>();
+
+      if (relData) {
+          relData.forEach((r: any) => {
+              if (r.cliente_id) allowedClientIds.add(r.cliente_id);
+              
+              if (r.empresa_id === null) {
+                  // Access to ALL companies of this client
+                  if (r.cliente_id) clientFullAccess.add(r.cliente_id);
+              } else if (r.dre_empresa?.emp_cnpj_raiz) {
+                  // Specific access
+                  allowedRoots.add(r.dre_empresa.emp_cnpj_raiz);
+              }
+          });
+      }
+
+      // If no clients allowed, return empty
+      if (allowedClientIds.size === 0) {
+          setTemplates([]);
+          setClientes([]);
+          setLoading(false);
+          return;
+      }
+
+      // 3. Fetch Templates
       let query = supabase.from('dre_template').select('*');
+      
+      // Filter by Allowed Clients first
+      query = query.in('cliente_id', Array.from(allowedClientIds));
+
       if (filtroCliente) query = query.eq('cliente_id', filtroCliente);
       if (filtroNome) query = query.ilike('dre_nome', `%${filtroNome}%`);
       query = query.order('dre_nome', { ascending: true });
 
-      const [templatesRes, clientesRes] = await Promise.all([
-        query,
-        supabase.from('dre_cliente').select('id, cli_nome').order('cli_nome', { ascending: true })
-      ]);
+      // 4. Fetch Clientes (Only allowed ones)
+      const clientesQuery = supabase
+        .from('dre_cliente')
+        .select('id, cli_nome')
+        .in('id', Array.from(allowedClientIds))
+        .order('cli_nome', { ascending: true });
+
+      const [templatesRes, clientesRes] = await Promise.all([query, clientesQuery]);
 
       if (templatesRes.error) throw templatesRes.error;
       if (clientesRes.error) throw clientesRes.error;
 
-      setTemplates(templatesRes.data || []);
+      // 5. Post-Process Templates based on CNPJ Root permissions
+      const rawTemplates = templatesRes.data || [];
+      const filteredTemplates = rawTemplates.filter((t: Template) => {
+          if (!t.cliente_id) return false; // Should have client
+          
+          // If user has full access to this client, show template
+          if (clientFullAccess.has(t.cliente_id)) return true;
+
+          // If user has restricted access, check if template's CNPJ Raiz is allowed
+          if (t.cliente_cnpj && allowedRoots.has(t.cliente_cnpj)) return true;
+
+          return false;
+      });
+
+      setTemplates(filteredTemplates);
       setClientes(clientesRes.data || []);
+
     } catch (err: any) {
       setError(`Falha ao carregar dados: ${err.message}`);
     } finally {
       setLoading(false);
     }
-  }, [filtroCliente, filtroNome]);
+  }, [filtroCliente, filtroNome, user]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -352,6 +419,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
             <tr>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Nome do Template</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Cliente</th>
+              <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">CNPJ Raiz</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Uso</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-center text-gray-400 uppercase">Ativo</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">Ações</th>
@@ -362,6 +430,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
               <tr key={template.id} className="hover:bg-gray-700/50">
                 <td className="px-4 py-2 font-medium text-white whitespace-nowrap">{template.dre_nome}</td>
                 <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{template.cliente_id ? clientesMap.get(template.cliente_id) || 'Inválido' : 'Global'}</td>
+                <td className="px-4 py-2 text-gray-400 whitespace-nowrap">{template.cliente_cnpj || '-'}</td>
                 <td className="px-4 py-2 text-gray-400 whitespace-nowrap">{template.dre_uso}</td>
                 <td className="px-4 py-2 text-center whitespace-nowrap">
                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${template.dre_ativo_sn === 'S' ? 'bg-green-800 text-green-300' : 'bg-red-800 text-red-300'}`}>

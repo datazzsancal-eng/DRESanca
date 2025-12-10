@@ -281,8 +281,8 @@ const UsuarioPage: React.FC = () => {
               const details = await fetchClientDetails(cliId);
               
               // Default: Select ALL roots and ALL companies
-              const allRoots = new Set(details.cnpjs.map(r => r.cnpj_raiz));
-              const allCompanies = new Set(details.empresas.map(e => e.id));
+              const allRoots = new Set<string>(details.cnpjs.map((r: any) => r.cnpj_raiz));
+              const allCompanies = new Set<string>(details.empresas.map((e: any) => e.id));
               
               newRoots[cliId] = allRoots;
               newCompanies[cliId] = allCompanies;

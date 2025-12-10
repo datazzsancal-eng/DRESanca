@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -757,7 +758,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
               </tr>
             </thead>
             <tbody className="bg-gray-800 divide-y divide-gray-700">
-              {linhasData.map((linha, index) => {
+              {linhasData.map((linha: TemplateLinhaForState, index: number) => {
                 const isConstant = linha.tipo_linha_id && tiposLinhaMap.get(linha.tipo_linha_id) === 'CONSTANTE';
                 return (
                   <tr key={linha._internalKey} draggable onDragStart={() => dragItem.current = index} onDragEnter={() => dragOverItem.current = index} onDragEnd={handleDragSort} onDragOver={(e) => e.preventDefault()} className="hover:bg-gray-700/50 cursor-move">

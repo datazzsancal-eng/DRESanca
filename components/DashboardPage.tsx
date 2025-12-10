@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 // import { supabase } from '../../lib/supabaseClient.ts';
 import { supabase } from '../lib/supabaseClient';
@@ -452,6 +453,8 @@ const DashboardPage: React.FC = () => {
   // Fetch dropdown data on mount
   useEffect(() => {
     const fetchDropdownData = async () => {
+      if (!user || !selectedClient) return;
+
       let currentWarnings: string[] = [];
 
       // Fetch periods from Supabase view
@@ -476,34 +479,65 @@ const DashboardPage: React.FC = () => {
         setPeriodsLoading(false);
       }
       
-      // Fetch visoes from Supabase table
+      // Fetch visoes from Supabase table with Permissions Check
       setVisoesLoading(true);
       try {
-          // If we have a selectedClient, filter visions by it
-          let query = supabase
-            .from('dre_visao')
-            .select('id, vis_nome, vis_descri, cliente_id')
-            .order('vis_nome');
-          
-          if (selectedClient) {
-              query = query.eq('cliente_id', selectedClient.id);
+          // 1. Fetch User Permissions specifically for the Selected Client
+          const { data: relData, error: relError } = await supabase
+            .from('rel_prof_cli_empr')
+            .select('empresa_id')
+            .eq('profile_id', user.id)
+            .eq('cliente_id', selectedClient.id) // Filter permissions by selected client
+            .eq('rel_situacao_id', 'ATV');
+
+          if (relError) throw relError;
+
+          let hasFullAccess = false;
+          const allowedCompanyIds = new Set<string>();
+
+          if (relData) {
+              relData.forEach((r: any) => {
+                  if (r.empresa_id === null) {
+                      hasFullAccess = true;
+                  } else {
+                      allowedCompanyIds.add(r.empresa_id);
+                  }
+              });
           }
 
-          const { data, error: visaoError } = await query;
+          // 2. Fetch Visions for the Selected Client, including companies for filtering
+          const { data: visoesData, error: visaoError } = await supabase
+            .from('dre_visao')
+            .select(`
+                id, vis_nome, vis_descri, cliente_id,
+                rel_visao_empresa ( empresa_id )
+            `)
+            .eq('cliente_id', selectedClient.id)
+            .order('vis_nome');
 
           if (visaoError) throw visaoError;
-          if (data && data.length > 0) {
-              setVisoes(data);
-              setSelectedVisao(data[0].id);
+
+          // 3. Filter visions based on subset logic
+          const filteredVisoes = (visoesData || []).filter((v: any) => {
+              if (hasFullAccess) return true;
+              
+              const visionCompanies = v.rel_visao_empresa || [];
+              if (visionCompanies.length === 0) return true; // Empty vision is safe/visible
+
+              // Show only if user has access to ALL companies in this vision
+              return visionCompanies.every((r: any) => allowedCompanyIds.has(r.empresa_id));
+          });
+
+          // 4. Update State
+          if (filteredVisoes.length > 0) {
+              setVisoes(filteredVisoes);
+              setSelectedVisao(filteredVisoes[0].id);
           } else {
-              if (selectedClient) {
-                  currentWarnings.push(`Nenhuma visão encontrada para o cliente ${selectedClient.cli_nome}.`);
-              } else {
-                  currentWarnings.push('Nenhuma visão foi encontrada na base de dados.');
-              }
+              currentWarnings.push(`Nenhuma visão disponível para o cliente ${selectedClient.cli_nome}.`);
               setVisoes([]);
               setSelectedVisao('');
           }
+
       } catch (err: any) {
           const errorMessage = err.message || 'Verifique a conexão ou as permissões da tabela.';
           console.error("Failed to fetch visoes:", err);
@@ -521,7 +555,7 @@ const DashboardPage: React.FC = () => {
     if (activePage === 'dashboard') {
         fetchDropdownData();
     }
-  }, [activePage, selectedClient]); // Re-fetch if selectedClient changes
+  }, [activePage, selectedClient, user]); // Re-fetch if selectedClient or user changes
   
   // Fetch Template Configurations (Cards and Line Styles) when selectedVisao changes
   useEffect(() => {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Shuttle from '../shared/Shuttle';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Type definitions
 interface Cliente { id: string; cli_nome: string; }
@@ -31,6 +32,8 @@ interface VisaoEditPageProps {
 }
 
 const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
+  const { user } = useAuth();
+  
   const [headerData, setHeaderData] = useState<VisaoHeader>(initialHeaderState);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [tiposVisao, setTiposVisao] = useState<TipoVisao[]>([]);
@@ -41,6 +44,17 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Permission State
+  const [userPermissions, setUserPermissions] = useState<{
+      allowedClientIds: Set<string>,
+      clientFullAccess: Set<string>,
+      allowedCompanyIds: Set<string>
+  }>({ 
+      allowedClientIds: new Set(), 
+      clientFullAccess: new Set(),
+      allowedCompanyIds: new Set()
+  });
 
   const tiposVisaoMap = useMemo(() => new Map(tiposVisao.map(t => [t.id, t.tpvis_nome])), [tiposVisao]);
   const tipoVisaoAtual = useMemo(() => headerData.tipo_visao_id ? tiposVisaoMap.get(headerData.tipo_visao_id) : null, [headerData.tipo_visao_id, tiposVisaoMap]);
@@ -74,19 +88,55 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
   // Initial Data Fetch
   useEffect(() => {
     const fetchInitialData = async () => {
+      if (!user) return;
       try {
+        // 1. Fetch User Permissions
+        const { data: relData, error: relError } = await supabase
+            .from('rel_prof_cli_empr')
+            .select('cliente_id, empresa_id')
+            .eq('profile_id', user.id)
+            .eq('rel_situacao_id', 'ATV');
+
+        if (relError) throw relError;
+
+        const perms = {
+            allowedClientIds: new Set<string>(),
+            clientFullAccess: new Set<string>(),
+            allowedCompanyIds: new Set<string>()
+        };
+
+        if (relData) {
+            relData.forEach((r: any) => {
+                if (r.cliente_id) perms.allowedClientIds.add(r.cliente_id);
+                if (r.empresa_id === null) {
+                    if (r.cliente_id) perms.clientFullAccess.add(r.cliente_id);
+                } else {
+                    perms.allowedCompanyIds.add(r.empresa_id);
+                }
+            });
+        }
+        setUserPermissions(perms);
+
+        // 2. Fetch Reference Data
         const [clientesRes, tiposRes] = await Promise.all([
-          supabase.from('dre_cliente').select('id, cli_nome').order('cli_nome'),
+          supabase.from('dre_cliente').select('id, cli_nome').in('id', Array.from(perms.allowedClientIds)).order('cli_nome'),
           supabase.from('tab_tipo_visao').select('id, tpvis_nome').eq('tpvis_visivel_sn', 'S').order('tpvis_nome'),
         ]);
         if (clientesRes.error) throw clientesRes.error;
         if (tiposRes.error) throw tiposRes.error;
+        
         setClientes(clientesRes.data || []);
         setTiposVisao(tiposRes.data || []);
 
         if (visaoId !== 'new') {
           const { data, error: visaoError } = await supabase.from('dre_visao').select('*').eq('id', visaoId).single();
           if (visaoError) throw visaoError;
+          
+          // Security Check: Ensure user has access to this vision's client
+          if (!perms.allowedClientIds.has(data.cliente_id)) {
+              throw new Error("Permissão negada para editar esta visão.");
+          }
+
           setHeaderData({ ...initialHeaderState, ...data });
 
           const { data: rels, error: relsError } = await supabase.from('rel_visao_empresa').select('empresa_id').eq('visao_id', visaoId);
@@ -104,7 +154,7 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
       }
     };
     fetchInitialData();
-  }, [visaoId]);
+  }, [visaoId, user]);
 
   // Fetch companies and CNPJs when client changes
   useEffect(() => {
@@ -115,7 +165,26 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
       }
       setLoading(true);
       try {
-        const { data, error } = await supabase.from('dre_empresa').select('id, emp_nome, emp_cnpj_raiz, emp_nome_reduz, emp_nome_cmpl, emp_cnpj, emp_cod_integra').eq('cliente_id', headerData.cliente_id);
+        let query = supabase
+            .from('dre_empresa')
+            .select('id, emp_nome, emp_cnpj_raiz, emp_nome_reduz, emp_nome_cmpl, emp_cnpj, emp_cod_integra')
+            .eq('cliente_id', headerData.cliente_id);
+        
+        // If user DOES NOT have full access, filter companies at fetch level or post-process
+        // For security, doing filtered fetch via ID list if list is not empty
+        if (!userPermissions.clientFullAccess.has(headerData.cliente_id)) {
+             // If allow list is empty (shouldn't happen if client is in allowedClientIds but fullaccess is false), array will be empty -> no rows
+             const allowedIds = Array.from(userPermissions.allowedCompanyIds);
+             if (allowedIds.length > 0) {
+                 query = query.in('id', allowedIds);
+             } else {
+                 setEmpresasDoCliente([]);
+                 setLoading(false);
+                 return;
+             }
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
         setEmpresasDoCliente(data || []);
       } catch (err: any) {
@@ -125,7 +194,7 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
       }
     };
     fetchClientData();
-  }, [headerData.cliente_id]);
+  }, [headerData.cliente_id, userPermissions]);
 
   // Auto-select companies based on vision type
   useEffect(() => {
@@ -258,7 +327,16 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
             <label className="block text-sm font-medium text-gray-300">Tipo de Visão</label>
             <select name="tipo_visao_id" value={headerData.tipo_visao_id || ''} onChange={handleHeaderChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md">
               <option value="">Selecione...</option>
-              {tiposVisao.map(t => <option key={t.id} value={t.id}>{t.tpvis_nome}</option>)}
+              {tiposVisao.map(t => {
+                  // FILTER TYPES: If user has partial access, only allow 'CUSTOMIZADO'
+                  if (headerData.cliente_id && !userPermissions.clientFullAccess.has(headerData.cliente_id)) {
+                      if (t.tpvis_nome === 'CUSTOMIZADO') {
+                          return <option key={t.id} value={t.id}>{t.tpvis_nome}</option>;
+                      }
+                      return null;
+                  }
+                  return <option key={t.id} value={t.id}>{t.tpvis_nome}</option>;
+              })}
             </select>
           </div>
           <div className="md:col-span-2">

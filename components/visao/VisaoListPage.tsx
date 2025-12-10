@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Type definitions
 interface Cliente {
@@ -13,9 +13,10 @@ interface Visao {
   vis_nome: string | null;
   vis_descri: string | null;
   vis_ativo_sn: string;
+  cliente_id: string | null;
   dre_cliente: { cli_nome: string | null } | null;
   tab_tipo_visao: { tpvis_nome: string | null } | null;
-  rel_visao_empresa: { count: number }[];
+  rel_visao_empresa: { empresa_id: string }[];
 }
 
 interface VisaoListPageProps {
@@ -31,7 +32,7 @@ const ListIcon = () => (
 );
 const CardIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
     </svg>
 );
 const CompanyIcon = () => (
@@ -42,8 +43,9 @@ const CompanyIcon = () => (
 
 
 const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) => {
+  const { user, selectedClient } = useAuth();
+  
   const [visoes, setVisoes] = useState<Visao[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -51,26 +53,44 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
   const [visaoForAction, setVisaoForAction] = useState<Visao | null>(null);
 
   const [filtroNome, setFiltroNome] = useState('');
-  const [filtroCliente, setFiltroCliente] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'card'>('card');
 
-
-  useEffect(() => {
-    const fetchClientes = async () => {
-      const { data, error } = await supabase.from('dre_cliente').select('id, cli_nome').order('cli_nome');
-      if (error) {
-        console.error("Falha ao buscar clientes para o filtro:", error);
-      } else {
-        setClientes(data || []);
-      }
-    };
-    fetchClientes();
-  }, []);
-
   const fetchData = useCallback(async () => {
+    if (!user || !selectedClient) return;
     setLoading(true);
     setError(null);
     try {
+      // 1. Fetch User Permissions specifically for the Selected Client
+      const { data: relData, error: relError } = await supabase
+        .from('rel_prof_cli_empr')
+        .select('empresa_id')
+        .eq('profile_id', user.id)
+        .eq('cliente_id', selectedClient.id) // Filter permissions by selected client
+        .eq('rel_situacao_id', 'ATV');
+
+      if (relError) throw relError;
+
+      let hasFullAccess = false;
+      const allowedCompanyIds = new Set<string>();
+
+      if (relData) {
+          relData.forEach((r: any) => {
+              if (r.empresa_id === null) {
+                  hasFullAccess = true;
+              } else {
+                  allowedCompanyIds.add(r.empresa_id);
+              }
+          });
+      }
+
+      // If no access found for this specific client (should imply an app logic error if selectedClient is valid), assume no access
+      if (!hasFullAccess && allowedCompanyIds.size === 0) {
+          setVisoes([]);
+          setLoading(false);
+          return;
+      }
+
+      // 2. Fetch Visions for the Selected Client ONLY
       let query = supabase
         .from('dre_visao')
         .select(`
@@ -78,29 +98,56 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
           vis_nome,
           vis_descri,
           vis_ativo_sn,
+          cliente_id,
           dre_cliente ( cli_nome ),
           tab_tipo_visao ( tpvis_nome ),
-          rel_visao_empresa ( count )
-        `);
+          rel_visao_empresa ( empresa_id )
+        `)
+        .eq('cliente_id', selectedClient.id); // Strict filtering by client context
       
       if (filtroNome) {
         query = query.ilike('vis_nome', `%${filtroNome}%`);
-      }
-      if (filtroCliente) {
-        query = query.eq('cliente_id', filtroCliente);
       }
       query = query.order('vis_nome', { ascending: true });
 
       const { data, error } = await query;
       if (error) throw error;
-      // Cast to unknown first to avoid TS error about incompatible types (TS infers arrays for joined props)
-      setVisoes((data as unknown as Visao[]) || []);
+
+      // 3. Apply Strict Subset Logic for Visibility
+      const rawVisoes = (data as unknown as Visao[]) || [];
+      
+      const filteredVisoes = rawVisoes.filter(visao => {
+          // Double check: should match selected client (query already does this, but being safe)
+          if (visao.cliente_id !== selectedClient.id) return false;
+
+          // Rule 1: Full Access to Client -> Show Everything for this client
+          if (hasFullAccess) {
+              return true;
+          }
+
+          // Rule 2: Partial Access -> Show only visions where user has access to ALL companies in the vision
+          const visionCompanies = visao.rel_visao_empresa || [];
+          
+          if (visionCompanies.length === 0) {
+              // Empty vision: Visible (contains nothing forbidden)
+              return true;
+          }
+
+          // Check if any company in the vision is NOT in the user's allowed list
+          const hasForbiddenCompany = visionCompanies.some(r => !allowedCompanyIds.has(r.empresa_id));
+          
+          // Show only if NO forbidden companies are found
+          return !hasForbiddenCompany;
+      });
+
+      setVisoes(filteredVisoes);
+
     } catch (err: any) {
       setError(`Falha ao carregar dados: ${err.message}`);
     } finally {
       setLoading(false);
     }
-  }, [filtroNome, filtroCliente]);
+  }, [filtroNome, user, selectedClient]);
 
   useEffect(() => {
     const handler = setTimeout(() => fetchData(), 300);
@@ -136,7 +183,7 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
   };
 
   const VisaoCard: React.FC<{ visao: Visao }> = ({ visao }) => {
-    const companyCount = visao.rel_visao_empresa[0]?.count || 0;
+    const companyCount = visao.rel_visao_empresa?.length || 0;
     
     return (
         <div className="flex flex-col justify-between p-4 bg-gray-900 border border-gray-700 rounded-lg shadow-lg hover:border-indigo-500 transition-all duration-200 h-full">
@@ -187,7 +234,7 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
         <div className="p-6 text-center bg-gray-800/50">
           <h2 className="text-lg font-bold text-white">Nenhuma Visão Encontrada</h2>
           <p className="mt-1 text-gray-400">
-            {filtroNome || filtroCliente ? "Tente ajustar seus filtros." : "Clique em 'Adicionar Visão' para começar."}
+            {filtroNome ? "Tente ajustar seus filtros." : "Clique em 'Adicionar Visão' para começar."}
           </p>
         </div>
       );
@@ -245,16 +292,8 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
   return (
     <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md space-y-4">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <h2 className="text-lg font-bold text-white">Visões Cadastradas</h2>
+        <h2 className="text-lg font-bold text-white">Visões Cadastradas ({selectedClient?.cli_nome})</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={filtroCliente}
-            onChange={e => setFiltroCliente(e.target.value)}
-            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm"
-          >
-            <option value="">Todos os Clientes</option>
-            {clientes.map(c => <option key={c.id} value={c.id}>{c.cli_nome}</option>)}
-          </select>
           <input 
             type="text" 
             placeholder="Buscar por nome..." 

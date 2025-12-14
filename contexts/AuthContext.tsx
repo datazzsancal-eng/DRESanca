@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
@@ -36,7 +35,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   
   // Client Selection State
-  // Initialize from localStorage to avoid "flicker" or loss of context on refresh
   const [availableClients, setAvailableClients] = useState<ClientContext[]>([]);
   const [selectedClient, setSelectedClientState] = useState<ClientContext | null>(() => {
       try {
@@ -56,12 +54,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
       
       if (error) {
-        console.error('Error fetching profile:', error);
+        // Ignora erro se for apenas "Row not found" para não sujar o console em novos usuários
+        if (error.code !== 'PGRST116') {
+            console.error('Error fetching profile:', error);
+        }
       } else {
         setProfile(data);
       }
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      console.error('Exception fetching profile:', error);
     }
   };
 
@@ -79,8 +80,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!relData || relData.length === 0) {
           setAvailableClients([]);
-          setSelectedClientState(null); // Clear selection if no access
-          localStorage.removeItem('dre_selected_client');
+          // Se não tem clientes permitidos, remove seleção atual
+          if (selectedClient) {
+              setSelectedClientState(null);
+              localStorage.removeItem('dre_selected_client');
+          }
           return;
       }
 
@@ -100,21 +104,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAvailableClients(clients);
 
       // Validate or Auto-select
-      // If we already have a selectedClient (from local storage), verify if it is still valid
       if (selectedClient) {
           const isValid = clients.find(c => c.id === selectedClient.id);
           if (!isValid) {
-              // Context is no longer valid (e.g. permission revoked), clear it
               setSelectedClientState(null);
               localStorage.removeItem('dre_selected_client');
           } else {
-              // Optional: Update with fresh data from DB (e.g. name change)
+              // Atualiza dados se necessário (ex: nome mudou)
               if (isValid.cli_nome !== selectedClient.cli_nome) {
                   selectClient(isValid);
               }
           }
       } else {
-          // No selection yet. If only 1 client, auto-select.
+          // Auto-select se único
           if (clients.length === 1) {
               selectClient(clients[0]);
           }
@@ -138,66 +140,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
+    // Função de Inicialização Única
     const initializeAuth = async () => {
         try {
-            // Get session without artificial timeouts
+            // 1. Obter Sessão Inicial
             const { data: { session }, error } = await supabase.auth.getSession();
-            if (error) throw error;
+            
+            if (error) {
+                throw error;
+            }
 
             if (mounted) {
                 setSession(session);
                 setUser(session?.user ?? null);
 
                 if (session?.user) {
-                    // Fetch data concurrently
+                    // 2. Carregar Dados do Usuário
                     await Promise.all([
                         fetchProfile(session.user.id),
                         fetchUserClients(session.user.id)
                     ]);
                 } else {
-                    // No user, clear profile
+                    // Limpar dados se não houver usuário
                     setProfile(null);
                     setAvailableClients([]);
                 }
             }
         } catch (err) {
             console.error("Auth initialization error:", err);
+            // Em caso de erro crítico na inicialização, forçamos logout local para evitar estado inconsistente
+            if (mounted) {
+                setSession(null);
+                setUser(null);
+            }
         } finally {
             if (mounted) {
-                setLoading(false);
+                setLoading(false); // Garante que o loading termina
             }
         }
     };
 
     initializeAuth();
 
-    // Listen for changes
+    // Listener de Eventos de Auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (!mounted) return;
         
-        // Update basic auth state
+        console.log(`Auth Event: ${event}`);
+        
         setSession(session);
         setUser(session?.user ?? null);
 
-        if (event === 'SIGNED_OUT') {
-            setProfile(null);
-            setAvailableClients([]);
-            selectClient(null);
-            setLoading(false);
-        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-             // Only refetch if we have a user
-             if (session?.user) {
-                 // We don't necessarily need to set loading=true for token refresh to avoid UI flickering
-                 // But for SIGNED_IN we might want to ensure data is fresh
-                 if (event === 'SIGNED_IN') setLoading(true);
-                 
+        if (event === 'SIGNED_IN') {
+            // Ao logar, buscamos os dados, mas NÃO ativamos o loading global
+            // para evitar conflitos de UI ou loops.
+            if (session?.user) {
                  await Promise.all([
                     fetchProfile(session.user.id),
                     fetchUserClients(session.user.id)
                  ]);
-                 
-                 if (event === 'SIGNED_IN') setLoading(false);
-             }
+            }
+        } else if (event === 'SIGNED_OUT') {
+            setProfile(null);
+            setAvailableClients([]);
+            selectClient(null);
+            localStorage.clear();
         }
     });
 
@@ -219,7 +226,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(null);
         setAvailableClients([]);
         selectClient(null);
-        localStorage.clear(); // Clear all app data
+        localStorage.clear();
         setLoading(false);
     }
   };

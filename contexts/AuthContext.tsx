@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
@@ -35,8 +36,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   
   // Client Selection State
+  // Initialize from localStorage to avoid "flicker" or loss of context on refresh
   const [availableClients, setAvailableClients] = useState<ClientContext[]>([]);
-  const [selectedClient, setSelectedClientState] = useState<ClientContext | null>(null);
+  const [selectedClient, setSelectedClientState] = useState<ClientContext | null>(() => {
+      try {
+          const stored = localStorage.getItem('dre_selected_client');
+          return stored ? JSON.parse(stored) : null;
+      } catch (e) {
+          return null;
+      }
+  });
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -58,8 +67,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchUserClients = async (userId: string) => {
     try {
-      // OTIMIZAÇÃO: Dividir em duas queries para evitar Timeout de RLS em Joins complexos
-      
       // 1. Buscar IDs dos relacionamentos ativos
       const { data: relData, error: relError } = await supabase
         .from('rel_prof_cli_empr')
@@ -72,7 +79,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!relData || relData.length === 0) {
           setAvailableClients([]);
-          setSelectedClientState(null);
+          setSelectedClientState(null); // Clear selection if no access
+          localStorage.removeItem('dre_selected_client');
           return;
       }
 
@@ -91,29 +99,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const clients = clientsData || [];
       setAvailableClients(clients);
 
-      // Lógica de Auto-seleção
-      if (clients.length === 1) {
-        selectClient(clients[0]);
-      } else if (clients.length > 1) {
-        // Verificar persistência
-        const stored = localStorage.getItem('dre_selected_client');
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            const isValid = clients.find(c => c.id === parsed.id);
-            if (isValid) {
-              setSelectedClientState(isValid);
-            } else {
+      // Validate or Auto-select
+      // If we already have a selectedClient (from local storage), verify if it is still valid
+      if (selectedClient) {
+          const isValid = clients.find(c => c.id === selectedClient.id);
+          if (!isValid) {
+              // Context is no longer valid (e.g. permission revoked), clear it
               setSelectedClientState(null);
-            }
-          } catch (e) {
-            setSelectedClientState(null);
+              localStorage.removeItem('dre_selected_client');
+          } else {
+              // Optional: Update with fresh data from DB (e.g. name change)
+              if (isValid.cli_nome !== selectedClient.cli_nome) {
+                  selectClient(isValid);
+              }
           }
-        } else {
-          setSelectedClientState(null);
-        }
       } else {
-        setSelectedClientState(null);
+          // No selection yet. If only 1 client, auto-select.
+          if (clients.length === 1) {
+              selectClient(clients[0]);
+          }
       }
 
     } catch (error) {
@@ -134,36 +138,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    const initSession = async () => {
+    const initializeAuth = async () => {
         try {
-            // Timeout de segurança aumentado para 40s (era 15s)
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Auth Timeout")), 40000));
-            const sessionPromise = supabase.auth.getSession();
-            
-            const result: any = await Promise.race([sessionPromise, timeoutPromise]);
-            const { data: { session }, error } = result;
-
+            // Get session without artificial timeouts
+            const { data: { session }, error } = await supabase.auth.getSession();
             if (error) throw error;
 
             if (mounted) {
                 setSession(session);
                 setUser(session?.user ?? null);
-                
+
                 if (session?.user) {
-                    // Fetch paralelo com timeout de 10s para dados
-                    const dataFetchPromise = Promise.all([
+                    // Fetch data concurrently
+                    await Promise.all([
                         fetchProfile(session.user.id),
                         fetchUserClients(session.user.id)
                     ]);
-                    
-                    await Promise.race([
-                        dataFetchPromise,
-                        new Promise((r) => setTimeout(r, 10000)) 
-                    ]);
+                } else {
+                    // No user, clear profile
+                    setProfile(null);
+                    setAvailableClients([]);
                 }
             }
         } catch (err) {
-            console.warn("Auth initialization warning:", err);
+            console.error("Auth initialization error:", err);
         } finally {
             if (mounted) {
                 setLoading(false);
@@ -171,29 +169,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    initSession();
+    initializeAuth();
 
+    // Listen for changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
+        if (!mounted) return;
+        
+        // Update basic auth state
+        setSession(session);
+        setUser(session?.user ?? null);
 
-      setSession(session);
-      setUser(session?.user ?? null);
-
-      if (session?.user) {
-        try {
-            await Promise.all([
-                fetchProfile(session.user.id),
-                fetchUserClients(session.user.id)
-            ]);
-        } catch (e) {
-            console.error("Auth change fetch error:", e);
+        if (event === 'SIGNED_OUT') {
+            setProfile(null);
+            setAvailableClients([]);
+            selectClient(null);
+            setLoading(false);
+        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+             // Only refetch if we have a user
+             if (session?.user) {
+                 // We don't necessarily need to set loading=true for token refresh to avoid UI flickering
+                 // But for SIGNED_IN we might want to ensure data is fresh
+                 if (event === 'SIGNED_IN') setLoading(true);
+                 
+                 await Promise.all([
+                    fetchProfile(session.user.id),
+                    fetchUserClients(session.user.id)
+                 ]);
+                 
+                 if (event === 'SIGNED_IN') setLoading(false);
+             }
         }
-      } else {
-        // Quando detectarmos logout, limpamos tudo
-        setProfile(null);
-        setAvailableClients([]);
-        selectClient(null);
-      }
     });
 
     return () => {
@@ -203,40 +208,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = async () => {
-    // 1. Feedback imediato para o usuário saber que o clique funcionou
     setLoading(true);
-    
     try {
-        // 2. Tenta logout no servidor (com timeout curto para não travar a UI se a rede falhar)
-        await Promise.race([
-            supabase.auth.signOut(),
-            new Promise(resolve => setTimeout(resolve, 2000))
-        ]);
+        await supabase.auth.signOut();
     } catch (error) {
-        console.error("Sign out error (non-blocking):", error);
+        console.error("Sign out error:", error);
     } finally {
-        // 3. Limpeza local garantida
         setProfile(null);
         setUser(null);
         setSession(null);
         setAvailableClients([]);
         selectClient(null);
-        
-        // Limpeza forçada do LocalStorage
-        localStorage.removeItem('dre_selected_client');
-        Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
-                localStorage.removeItem(key);
-            }
-        });
-        
-        // 4. Finaliza loading. Como session agora é null, o App.tsx vai renderizar o LoginPage automaticamente.
-        // NÃO usamos window.location.reload() para evitar re-inicialização de sessão fantasma.
+        localStorage.clear(); // Clear all app data
         setLoading(false);
     }
   };
 
-  // Memoize o valor do contexto para evitar re-renderizações desnecessárias
   const value = useMemo(() => ({
     session,
     user,

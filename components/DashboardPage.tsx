@@ -363,16 +363,16 @@ const DreTable: React.FC<DreTableProps> = ({ data, selectedPeriod }) => {
     };
 
     return (
-        <div className="overflow-x-auto bg-gray-800 border border-gray-700 rounded-lg shadow-md">
-            <table className="min-w-full text-sm divide-y divide-gray-700">
+        <div className="overflow-auto bg-gray-800 border border-gray-700 rounded-lg shadow-md max-h-[70vh]">
+            <table className="min-w-full text-sm divide-y divide-gray-700 border-separate border-spacing-0">
                 <thead className="bg-gray-700">
                     <tr>
-                        <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Descrição</th>
+                        <th className="sticky left-0 top-0 z-20 bg-gray-700 px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase shadow-[1px_0_0_0_rgba(75,85,99,1)]">Descrição</th>
                         {visibleMonths.map(month => (
-                            <th key={month} className="px-3 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">{month}</th>
+                            <th key={month} className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">{month}</th>
                         ))}
-                        <th className="px-3 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">Acumulado</th>
-                        <th className="px-3 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">%</th>
+                        <th className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">Acumulado</th>
+                        <th className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">%</th>
                     </tr>
                 </thead>
                 <tbody className="bg-gray-800 divide-y divide-gray-700">
@@ -389,9 +389,9 @@ const DreTable: React.FC<DreTableProps> = ({ data, selectedPeriod }) => {
                         const paddingLeft = `calc(0.75rem + ${(row.indentationLevel || 0)}ch)`;
 
                         return (
-                            <tr key={index} className="hover:bg-gray-700/50">
+                            <tr key={index} className="group hover:bg-gray-700/50">
                                 <td 
-                                    className="px-3 py-2 whitespace-nowrap text-gray-300"
+                                    className="sticky left-0 z-10 bg-gray-800 group-hover:bg-gray-700 px-3 py-2 whitespace-nowrap text-gray-300 shadow-[1px_0_0_0_rgba(55,65,81,1)]"
                                     style={{ 
                                         fontWeight, 
                                         fontStyle, 
@@ -1097,9 +1097,9 @@ const DashboardPage: React.FC = () => {
               </div>
               
               {/* Data Table */}
-              <div className={`bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700 min-h-[400px] flex ${dreData.length > 0 && !loading ? 'items-start' : 'items-center justify-center'}`}>
+              <div className={`bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700 ${dreData.length > 0 && !loading ? 'items-start' : 'items-center justify-center'}`}>
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center">
+                    <div className="flex flex-col items-center justify-center min-h-[400px]">
                         <div className="w-12 h-12 border-4 border-t-transparent border-indigo-500 rounded-full animate-spin"></div>
                         <span className="mt-4 text-lg text-gray-300">Carregando dados...</span>
                     </div>
@@ -1108,7 +1108,7 @@ const DashboardPage: React.FC = () => {
                         <DreTable data={dreData} selectedPeriod={selectedPeriod} />
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center justify-center text-center p-8">
+                    <div className="flex flex-col items-center justify-center text-center p-8 min-h-[400px]">
                         {(!selectedPeriod || !selectedVisao) ? (
                             <>
                                 <div className="w-16 h-16 bg-gray-700/50 rounded-full flex items-center justify-center mb-4">

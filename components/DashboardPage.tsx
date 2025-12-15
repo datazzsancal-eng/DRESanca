@@ -85,6 +85,8 @@ const PdfIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5
 const CsvIcon = () => <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className="h-5 w-5 mr-1" />;
 const XlsxIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" className="h-5 w-5 mr-1 text-green-500" />;
 const SwitchIcon = () => <Icon path="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" className="h-4 w-4" />;
+const BellIcon = () => <Icon path="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />;
+const KeyIcon = () => <Icon path="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />;
 
 const MenuIcon = () => <Icon path="M4 6h16M4 12h16M4 18h16" />;
 const CloseIcon = () => <Icon path="M6 18L18 6M6 6l12 12" />;
@@ -95,7 +97,7 @@ const SancalLogo = () => (
   <img 
     src="https://www.sancal.com.br/wp-content/uploads/elementor/thumbs/logo-white-qfydekyggou3snwsfrlsc913ym97p1hveemqwoinls.png" 
     alt="Sancal Logo" 
-    className="h-8 w-auto"
+    className="h-8 w-auto" 
   />
 );
 
@@ -203,8 +205,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, acti
            onClick={() => setIsSidebarOpen(false)}>
       </div>
       <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-800 text-white transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:inset-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-64'}`}>
-        {/* Adjusted Height to h-16 (standard nav height) */}
-        <div className={`flex items-center h-16 px-4 border-b border-gray-700 shrink-0 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+        {/* Adjusted Height to h-20 (80px) */}
+        <div className={`flex items-center h-20 px-4 border-b border-gray-700 shrink-0 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
           {!isCollapsed ? <SancalLogo /> : <DashboardIcon />}
           <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
               <CloseIcon />
@@ -419,6 +421,9 @@ const DashboardPage: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState('dashboard');
   
+  // User Menu State
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+
   const [rawDreData, setRawDreData] = useState<any[]>([]); // Data from Webhook
   const [dreData, setDreData] = useState<DreDataRow[]>([]); // Formatted data for table
   
@@ -998,8 +1003,8 @@ const DashboardPage: React.FC = () => {
         onChangeClient={() => selectClient(null)}
       />
       <div className="flex flex-col flex-1 w-full overflow-y-auto">
-        {/* Adjusted Header Height to h-16 (standard nav height) */}
-        <header className="flex items-center justify-between h-16 px-6 bg-gray-800 border-b border-gray-700 sticky top-0 z-20">
+        {/* Adjusted Header Height to h-20 (80px) */}
+        <header className="flex items-center justify-between h-20 px-6 bg-gray-800 border-b border-gray-700 sticky top-0 z-20">
             <div className="flex items-center">
                 <button className="text-gray-300 lg:hidden mr-4" onClick={() => setIsSidebarOpen(true)}>
                     <MenuIcon />
@@ -1007,31 +1012,57 @@ const DashboardPage: React.FC = () => {
                 <h1 className="text-xl font-semibold text-white">{pageTitles[activePage] || 'Dashboard'}</h1>
             </div>
             
-            <div className="flex items-center gap-4">
-                <div className="hidden md:block text-right">
-                    <p className="text-sm font-bold text-white leading-tight">{profile?.full_name || 'Usuário'}</p>
-                    <p className="text-xs text-gray-400 truncate max-w-[150px] leading-tight">{user?.email}</p>
-                </div>
-                <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md border border-indigo-500 hover:bg-indigo-500 transition-colors cursor-default">
-                    {getInitials(profile?.full_name)}
-                </div>
-                <div className="border-l border-gray-600 h-8 mx-2"></div>
+            <div className="relative">
                 <button 
-                    onClick={signOut} 
-                    className="p-2 text-gray-300 hover:text-red-400 hover:bg-gray-700 rounded-full transition-colors flex items-center gap-2 group"
-                    title="Sair do Sistema"
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="flex items-center gap-4 focus:outline-none group"
                 >
-                    <LogoutIcon />
-                    <span className="hidden lg:inline text-sm font-medium group-hover:text-red-400 transition-colors">Sair</span>
+                    <div className="hidden md:block text-right">
+                        <p className="text-sm font-bold text-white leading-tight group-hover:text-indigo-400 transition-colors">{profile?.full_name || 'Usuário'}</p>
+                        <p className="text-xs text-gray-400 truncate max-w-[150px] leading-tight">{user?.email}</p>
+                    </div>
+                    <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md border border-indigo-500 group-hover:bg-indigo-500 transition-colors">
+                        {getInitials(profile?.full_name)}
+                    </div>
+                    <div className="text-gray-400 group-hover:text-white transition-colors">
+                        <ChevronDownIcon />
+                    </div>
                 </button>
+
+                {isUserMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-56 bg-gray-800 rounded-md shadow-lg py-1 ring-1 ring-black ring-opacity-5 z-50 border border-gray-700">
+                        <button 
+                            className="flex items-center w-full px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white text-left group"
+                            onClick={() => console.log('Notificações')}
+                        >
+                            <span className="mr-3 text-gray-400 group-hover:text-indigo-400"><BellIcon /></span>
+                            Notificações
+                        </button>
+                        <button 
+                            className="flex items-center w-full px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white text-left group"
+                            onClick={() => console.log('Troca de Senha')}
+                        >
+                            <span className="mr-3 text-gray-400 group-hover:text-indigo-400"><KeyIcon /></span>
+                            Troca de Senha
+                        </button>
+                        <div className="border-t border-gray-700 my-1"></div>
+                        <button 
+                            onClick={signOut} 
+                            className="flex items-center w-full px-4 py-2 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 text-left group"
+                        >
+                            <span className="mr-3"><LogoutIcon /></span>
+                            Sair
+                        </button>
+                    </div>
+                )}
             </div>
         </header>
 
         <main className="p-4">
           {activePage === 'dashboard' && (
             <div>
-              {/* Sticky container for cards and filters */}
-              <div className="sticky top-16 z-10 bg-gray-900 -mx-4 px-4 py-4 mb-4">
+              {/* Sticky container for cards and filters. Corrected top to 20 (80px) */}
+              <div className="sticky top-20 z-10 bg-gray-900 -mx-4 px-4 py-4 mb-4">
                   {(error || warning) && (
                     <div className={`p-3 mb-4 text-sm rounded-lg ${error ? 'text-red-400 bg-red-900/50 border border-red-800' : 'text-yellow-400 bg-yellow-900/50 border border-yellow-800'}`}>
                         {error || warning}

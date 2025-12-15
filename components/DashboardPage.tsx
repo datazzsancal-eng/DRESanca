@@ -156,20 +156,17 @@ const navigationData: NavItem[] = [
 
 // Sidebar component
 interface SidebarProps {
-  onLogout: () => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (isOpen: boolean) => void;
   activePage: string;
   setActivePage: (page: string) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
-  userEmail?: string;
-  userName?: string | null;
   selectedClient: ClientContext | null;
   onChangeClient: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebarOpen, activePage, setActivePage, isCollapsed, onToggleCollapse, userEmail, userName, selectedClient, onChangeClient }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, activePage, setActivePage, isCollapsed, onToggleCollapse, selectedClient, onChangeClient }) => {
   const [openMenus, setOpenMenus] = useState<{ [key: string]: boolean }>({
     'analise-modelos': true,
     estrutura: true,
@@ -212,6 +209,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebar
               <CloseIcon />
           </button>
         </div>
+        
         <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
           {navigationData.map((item) => {
             if (item.children) {
@@ -256,8 +254,9 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebar
             );
           })}
         </nav>
+
         <div className="p-2 border-t border-gray-700 shrink-0">
-          {/* Selected Client Display */}
+          {/* Selected Client Display - Moved to be just above Logo/Collapse */}
           {!isCollapsed && selectedClient && (
             <div className="flex items-center justify-between p-2 mb-2 bg-gray-700/50 rounded-lg border border-gray-600">
                 <div className="truncate flex-1">
@@ -275,19 +274,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, isSidebarOpen, setIsSidebar
             </button>
           )}
 
-          <div className={`flex items-center p-2 rounded-lg ${isCollapsed ? 'justify-center' : ''}`}>
-            <UserIcon />
-            {!isCollapsed && (
-              <div className="ml-3 truncate">
-                <p className="text-sm font-semibold">{userName || 'Usuário'}</p>
-                <p className="text-xs text-gray-400 truncate w-32" title={userEmail}>{userEmail || '...'}</p>
-              </div>
-            )}
-          </div>
-          <button onClick={onLogout} className={`flex items-center w-full p-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-red-600 hover:text-white transition-colors duration-200 ${isCollapsed ? 'justify-center' : ''}`} title={isCollapsed ? 'Logout' : ''}>
-            <LogoutIcon /> 
-            {!isCollapsed && <span className="ml-2">Logout</span>}
-          </button>
            <button
             onClick={onToggleCollapse}
             className={`hidden lg:flex items-center w-full p-2 mt-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-gray-600 transition-colors duration-200 ${isCollapsed ? 'justify-center' : ''}`}
@@ -986,28 +972,53 @@ const DashboardPage: React.FC = () => {
       };
   };
 
+  // Helper for Initials
+  const getInitials = (name: string | null | undefined) => {
+      if (!name) return 'U';
+      const parts = name.trim().split(' ');
+      if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
 
   return (
     <div className="flex h-screen bg-gray-900 text-gray-300">
       <Sidebar 
-        onLogout={signOut} 
         isSidebarOpen={isSidebarOpen} 
         setIsSidebarOpen={setIsSidebarOpen}
         activePage={activePage}
         setActivePage={setActivePage}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
-        userEmail={user?.email}
-        userName={profile?.full_name}
         selectedClient={selectedClient}
         onChangeClient={() => selectClient(null)}
       />
       <div className="flex flex-col flex-1 w-full overflow-y-auto">
-        <header className="flex items-center justify-between h-16 px-4 bg-gray-800 border-b border-gray-700 lg:justify-end sticky top-0 z-20">
-            <button className="text-gray-300 lg:hidden" onClick={() => setIsSidebarOpen(true)}>
-                <MenuIcon />
-            </button>
-            <h1 className="text-lg font-semibold text-white">{pageTitles[activePage] || 'Dashboard'}</h1>
+        <header className="flex items-center justify-between h-16 px-4 bg-gray-800 border-b border-gray-700 sticky top-0 z-20">
+            <div className="flex items-center">
+                <button className="text-gray-300 lg:hidden mr-4" onClick={() => setIsSidebarOpen(true)}>
+                    <MenuIcon />
+                </button>
+                <h1 className="text-lg font-semibold text-white">{pageTitles[activePage] || 'Dashboard'}</h1>
+            </div>
+            
+            <div className="flex items-center gap-4">
+                <div className="hidden md:block text-right">
+                    <p className="text-sm font-semibold text-white">{profile?.full_name || 'Usuário'}</p>
+                    <p className="text-xs text-gray-400 truncate max-w-[150px]">{user?.email}</p>
+                </div>
+                <div className="h-9 w-9 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md border border-indigo-500">
+                    {getInitials(profile?.full_name)}
+                </div>
+                <div className="border-l border-gray-600 h-6 mx-1"></div>
+                <button 
+                    onClick={signOut} 
+                    className="p-2 text-gray-300 hover:text-red-400 hover:bg-gray-700 rounded-full transition-colors"
+                    title="Sair do Sistema"
+                >
+                    <LogoutIcon />
+                </button>
+            </div>
         </header>
 
         <main className="p-4">

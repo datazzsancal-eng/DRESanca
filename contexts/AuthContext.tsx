@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
@@ -53,10 +54,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', userId)
         .single();
       
-      if (error) {
-        if (error.code !== 'PGRST116') {
-            console.error('Error fetching profile:', error);
-        }
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching profile:', error);
       } else {
         setProfile(data);
       }
@@ -98,20 +97,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const clients = clientsData || [];
       setAvailableClients(clients);
 
+      // Validate selected client against new list
       if (selectedClient) {
           const isValid = clients.find(c => c.id === selectedClient.id);
           if (!isValid) {
               setSelectedClientState(null);
               localStorage.removeItem('dre_selected_client');
-          } else {
-              if (isValid.cli_nome !== selectedClient.cli_nome) {
-                  selectClient(isValid);
-              }
+          } else if (isValid.cli_nome !== selectedClient.cli_nome) {
+              // Update local state if name changed
+              selectClient(isValid);
           }
-      } else {
-          if (clients.length === 1) {
-              selectClient(clients[0]);
-          }
+      } else if (clients.length === 1) {
+          // Auto-select if only one
+          selectClient(clients[0]);
       }
 
     } catch (error) {
@@ -132,41 +130,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    const initializeAuth = async () => {
+    const initAuth = async () => {
         try {
-            // Get session directly - removed artificial timeout/race condition
             const { data: { session }, error } = await supabase.auth.getSession();
-            
-            if (error) {
-                console.error("Error getting session:", error);
-                // Proceed without throwing to allow 'finally' to run
-            }
+            if (error) console.error("Get session error:", error);
 
             if (mounted) {
                 setSession(session);
                 setUser(session?.user ?? null);
 
                 if (session?.user) {
-                    // Fetch data concurrently, catch errors so one doesn't fail all
                     await Promise.all([
-                        fetchProfile(session.user.id).catch(e => console.error("Profile fetch error", e)),
-                        fetchUserClients(session.user.id).catch(e => console.error("Clients fetch error", e))
+                        fetchProfile(session.user.id),
+                        fetchUserClients(session.user.id)
                     ]);
-                } else {
-                    setProfile(null);
-                    setAvailableClients([]);
                 }
             }
         } catch (err) {
-            console.error("Auth init unexpected error:", err);
+            console.error("Auth init exception:", err);
         } finally {
-            if (mounted) {
-                setLoading(false); // Ensure loading is always disabled
-            }
+            if (mounted) setLoading(false);
         }
     };
 
-    initializeAuth();
+    initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (!mounted) return;
@@ -174,18 +161,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(session);
         setUser(session?.user ?? null);
 
-        if (event === 'SIGNED_IN') {
-            if (session?.user) {
-                 await Promise.all([
-                    fetchProfile(session.user.id),
-                    fetchUserClients(session.user.id)
-                 ]).catch(console.error);
-            }
+        if (event === 'SIGNED_IN' && session?.user) {
+             // Only fetch if we are not already loading (to avoid double fetch with initAuth)
+             // However, onAuthStateChange often fires after getSession in initialization flow
+             await Promise.all([
+                fetchProfile(session.user.id),
+                fetchUserClients(session.user.id)
+             ]);
         } else if (event === 'SIGNED_OUT') {
             setProfile(null);
             setAvailableClients([]);
-            selectClient(null);
+            setSelectedClientState(null);
             localStorage.removeItem('dre_selected_client');
+            setLoading(false);
         }
     });
 
@@ -202,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
         console.error("Sign out error:", error);
     } finally {
+        // State updates handled by onAuthStateChange('SIGNED_OUT') but we do explicit cleanup to be sure UI updates fast
         setProfile(null);
         setUser(null);
         setSession(null);

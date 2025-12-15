@@ -203,6 +203,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, acti
            onClick={() => setIsSidebarOpen(false)}>
       </div>
       <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-800 text-white transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:inset-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-64'}`}>
+        {/* Adjusted Height to h-16 (standard nav height) */}
         <div className={`flex items-center h-16 px-4 border-b border-gray-700 shrink-0 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
           {!isCollapsed ? <SancalLogo /> : <DashboardIcon />}
           <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
@@ -255,10 +256,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, acti
           })}
         </nav>
 
-        <div className="p-2 border-t border-gray-700 shrink-0">
-          {/* Selected Client Display - Moved to be just above Logo/Collapse */}
+        <div className="p-2 border-t border-gray-700 shrink-0 flex flex-col gap-2">
+          {/* 1. Client Selection */}
           {!isCollapsed && selectedClient && (
-            <div className="flex items-center justify-between p-2 mb-2 bg-gray-700/50 rounded-lg border border-gray-600">
+            <div className="flex items-center justify-between p-2 bg-gray-700/50 rounded-lg border border-gray-600">
                 <div className="truncate flex-1">
                     <p className="text-[10px] uppercase text-gray-400 font-bold tracking-wider">Cliente Atual</p>
                     <p className="text-sm font-semibold text-white truncate" title={selectedClient.cli_nome || ''}>{selectedClient.cli_nome}</p>
@@ -269,25 +270,28 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, acti
             </div>
           )}
           {isCollapsed && (
-             <button onClick={onChangeClient} className="flex justify-center w-full p-2 mb-2 text-gray-400 hover:text-white hover:bg-gray-600 rounded-lg transition-colors" title={`Cliente: ${selectedClient?.cli_nome || 'Nenhum'}`}>
+             <button onClick={onChangeClient} className="flex justify-center w-full p-2 text-gray-400 hover:text-white hover:bg-gray-600 rounded-lg transition-colors" title={`Cliente: ${selectedClient?.cli_nome || 'Nenhum'}`}>
                 <SwitchIcon />
             </button>
           )}
 
+           {/* 2. Collapse Button */}
            <button
             onClick={onToggleCollapse}
-            className={`hidden lg:flex items-center w-full p-2 mt-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-gray-600 transition-colors duration-200 ${isCollapsed ? 'justify-center' : ''}`}
+            className={`hidden lg:flex items-center w-full p-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-gray-600 transition-colors duration-200 ${isCollapsed ? 'justify-center' : ''}`}
             title={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
           >
             {isCollapsed ? <ChevronDoubleRightIcon /> : <ChevronDoubleLeftIcon />}
             {!isCollapsed && <span className="ml-2">Recolher</span>}
           </button>
+
+          {/* 3. Logo Synapiens (Bottom) */}
           {!isCollapsed && (
-            <div className="flex justify-center pt-4 pb-2">
+            <div className="flex justify-center pt-2 pb-1">
                 <img 
                 src="https://raw.githubusercontent.com/synapiens/uteis/refs/heads/main/LogoSynapiens/Synapiens_logo_hor.png" 
                 alt="Synapiens" 
-                className="h-8 w-auto"
+                className="h-8 w-auto opacity-70 hover:opacity-100 transition-opacity"
                 />
             </div>
           )}
@@ -994,29 +998,31 @@ const DashboardPage: React.FC = () => {
         onChangeClient={() => selectClient(null)}
       />
       <div className="flex flex-col flex-1 w-full overflow-y-auto">
-        <header className="flex items-center justify-between h-16 px-4 bg-gray-800 border-b border-gray-700 sticky top-0 z-20">
+        {/* Adjusted Header Height to h-16 (standard nav height) */}
+        <header className="flex items-center justify-between h-16 px-6 bg-gray-800 border-b border-gray-700 sticky top-0 z-20">
             <div className="flex items-center">
                 <button className="text-gray-300 lg:hidden mr-4" onClick={() => setIsSidebarOpen(true)}>
                     <MenuIcon />
                 </button>
-                <h1 className="text-lg font-semibold text-white">{pageTitles[activePage] || 'Dashboard'}</h1>
+                <h1 className="text-xl font-semibold text-white">{pageTitles[activePage] || 'Dashboard'}</h1>
             </div>
             
             <div className="flex items-center gap-4">
                 <div className="hidden md:block text-right">
-                    <p className="text-sm font-semibold text-white">{profile?.full_name || 'Usuário'}</p>
-                    <p className="text-xs text-gray-400 truncate max-w-[150px]">{user?.email}</p>
+                    <p className="text-sm font-bold text-white leading-tight">{profile?.full_name || 'Usuário'}</p>
+                    <p className="text-xs text-gray-400 truncate max-w-[150px] leading-tight">{user?.email}</p>
                 </div>
-                <div className="h-9 w-9 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md border border-indigo-500">
+                <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md border border-indigo-500 hover:bg-indigo-500 transition-colors cursor-default">
                     {getInitials(profile?.full_name)}
                 </div>
-                <div className="border-l border-gray-600 h-6 mx-1"></div>
+                <div className="border-l border-gray-600 h-8 mx-2"></div>
                 <button 
                     onClick={signOut} 
-                    className="p-2 text-gray-300 hover:text-red-400 hover:bg-gray-700 rounded-full transition-colors"
+                    className="p-2 text-gray-300 hover:text-red-400 hover:bg-gray-700 rounded-full transition-colors flex items-center gap-2 group"
                     title="Sair do Sistema"
                 >
                     <LogoutIcon />
+                    <span className="hidden lg:inline text-sm font-medium group-hover:text-red-400 transition-colors">Sair</span>
                 </button>
             </div>
         </header>

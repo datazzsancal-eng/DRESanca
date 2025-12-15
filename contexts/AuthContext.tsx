@@ -54,7 +54,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
       
       if (error) {
-        // Ignora erro se for apenas "Row not found" para não sujar o console em novos usuários
         if (error.code !== 'PGRST116') {
             console.error('Error fetching profile:', error);
         }
@@ -68,7 +67,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchUserClients = async (userId: string) => {
     try {
-      // 1. Buscar IDs dos relacionamentos ativos
       const { data: relData, error: relError } = await supabase
         .from('rel_prof_cli_empr')
         .select('cliente_id')
@@ -80,7 +78,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!relData || relData.length === 0) {
           setAvailableClients([]);
-          // Se não tem clientes permitidos, remove seleção atual
           if (selectedClient) {
               setSelectedClientState(null);
               localStorage.removeItem('dre_selected_client');
@@ -88,10 +85,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
       }
 
-      // Extrair IDs únicos
       const clientIds = Array.from(new Set(relData.map((item: any) => item.cliente_id)));
 
-      // 2. Buscar detalhes dos clientes
       const { data: clientsData, error: clientsError } = await supabase
         .from('dre_cliente')
         .select('id, cli_nome')
@@ -103,20 +98,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const clients = clientsData || [];
       setAvailableClients(clients);
 
-      // Validate or Auto-select
       if (selectedClient) {
           const isValid = clients.find(c => c.id === selectedClient.id);
           if (!isValid) {
               setSelectedClientState(null);
               localStorage.removeItem('dre_selected_client');
           } else {
-              // Atualiza dados se necessário (ex: nome mudou)
               if (isValid.cli_nome !== selectedClient.cli_nome) {
                   selectClient(isValid);
               }
           }
       } else {
-          // Auto-select se único
           if (clients.length === 1) {
               selectClient(clients[0]);
           }
@@ -140,14 +132,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    // Função de Inicialização Única
     const initializeAuth = async () => {
         try {
-            // 1. Obter Sessão Inicial
+            // Get session directly - removed artificial timeout/race condition
             const { data: { session }, error } = await supabase.auth.getSession();
             
             if (error) {
-                throw error;
+                console.error("Error getting session:", error);
+                // Proceed without throwing to allow 'finally' to run
             }
 
             if (mounted) {
@@ -155,56 +147,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUser(session?.user ?? null);
 
                 if (session?.user) {
-                    // 2. Carregar Dados do Usuário
+                    // Fetch data concurrently, catch errors so one doesn't fail all
                     await Promise.all([
-                        fetchProfile(session.user.id),
-                        fetchUserClients(session.user.id)
+                        fetchProfile(session.user.id).catch(e => console.error("Profile fetch error", e)),
+                        fetchUserClients(session.user.id).catch(e => console.error("Clients fetch error", e))
                     ]);
                 } else {
-                    // Limpar dados se não houver usuário
                     setProfile(null);
                     setAvailableClients([]);
                 }
             }
         } catch (err) {
-            console.error("Auth initialization error:", err);
-            // Em caso de erro crítico na inicialização, forçamos logout local para evitar estado inconsistente
-            if (mounted) {
-                setSession(null);
-                setUser(null);
-            }
+            console.error("Auth init unexpected error:", err);
         } finally {
             if (mounted) {
-                setLoading(false); // Garante que o loading termina
+                setLoading(false); // Ensure loading is always disabled
             }
         }
     };
 
     initializeAuth();
 
-    // Listener de Eventos de Auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (!mounted) return;
-        
-        console.log(`Auth Event: ${event}`);
         
         setSession(session);
         setUser(session?.user ?? null);
 
         if (event === 'SIGNED_IN') {
-            // Ao logar, buscamos os dados, mas NÃO ativamos o loading global
-            // para evitar conflitos de UI ou loops.
             if (session?.user) {
                  await Promise.all([
                     fetchProfile(session.user.id),
                     fetchUserClients(session.user.id)
-                 ]);
+                 ]).catch(console.error);
             }
         } else if (event === 'SIGNED_OUT') {
             setProfile(null);
             setAvailableClients([]);
             selectClient(null);
-            localStorage.clear();
+            localStorage.removeItem('dre_selected_client');
         }
     });
 

@@ -423,6 +423,9 @@ const DashboardPage: React.FC = () => {
   
   // User Menu State
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  
+  // Header Expand/Collapse State
+  const [isHeaderExpanded, setIsHeaderExpanded] = useState(true);
 
   const [rawDreData, setRawDreData] = useState<any[]>([]); // Data from Webhook
   const [dreData, setDreData] = useState<DreDataRow[]>([]); // Formatted data for table
@@ -1062,86 +1065,122 @@ const DashboardPage: React.FC = () => {
           {activePage === 'dashboard' && (
             <div>
               {/* Sticky container for cards and filters. Corrected top to 20 (80px) */}
-              <div className="sticky top-20 z-10 bg-gray-900 -mx-4 px-4 py-4 mb-4">
-                  {(error || warning) && (
-                    <div className={`p-3 mb-4 text-sm rounded-lg ${error ? 'text-red-400 bg-red-900/50 border border-red-800' : 'text-yellow-400 bg-yellow-900/50 border border-yellow-800'}`}>
-                        {error || warning}
+              <div className="sticky top-20 z-10 bg-gray-900 -mx-4 px-4 shadow-sm transition-all duration-300">
+                  {/* Collapsible Section */}
+                  {isHeaderExpanded ? (
+                    <div className="py-4 mb-4 border-b border-gray-800">
+                        {(error || warning) && (
+                            <div className={`p-3 mb-4 text-sm rounded-lg ${error ? 'text-red-400 bg-red-900/50 border border-red-800' : 'text-yellow-400 bg-yellow-900/50 border border-yellow-800'}`}>
+                                {error || warning}
+                            </div>
+                        )}
+                        {/* Stat Cards - Dynamically Rendered */}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+                            {[1, 2, 3, 4].map(pos => {
+                                const data = processCardData(pos);
+                                return (
+                                    <StatCard 
+                                        key={pos}
+                                        title={data.title} 
+                                        subtitle={data.subtitle} 
+                                        value={data.value} 
+                                        percentage={data.percentage} 
+                                        variation={data.variation} 
+                                    />
+                                );
+                            })}
+                        </div>
+
+                        {/* Filters and Title */}
+                        <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md relative">
+                            <button 
+                                onClick={() => setIsHeaderExpanded(false)}
+                                className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
+                                title="Recolher Filtros"
+                            >
+                                <ChevronUpIcon />
+                            </button>
+                            <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center pr-8">
+                                <h2 className="text-lg font-bold text-white">DRE VISÃO CONSOLIDADA</h2>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <select 
+                                    value={selectedPeriod}
+                                    onChange={(e) => setSelectedPeriod(Number(e.target.value))}
+                                    disabled={periodsLoading || periods.length === 0}
+                                    className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                                    >
+                                    {periodsLoading ? (
+                                        <option>Carregando...</option>
+                                    ) : periods.length > 0 ? (
+                                        periods.map(p => <option key={p.retorno} value={p.retorno}>{p.display}</option>)
+                                    ) : (
+                                        <option>Sem períodos</option>
+                                    )}
+                                    </select>
+                                    <select
+                                    value={selectedVisao}
+                                    onChange={(e) => setSelectedVisao(e.target.value)}
+                                    disabled={visoesLoading || visoes.length === 0}
+                                    className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                                    >
+                                    {visoesLoading ? (
+                                        <option>Carregando...</option>
+                                    ) : visoes.length > 0 ? (
+                                        visoes.map(v => (
+                                        <option key={v.id} value={v.id} title={v.vis_descri || v.vis_nome}>
+                                            {v.vis_nome}
+                                        </option>
+                                        ))
+                                    ) : (
+                                        <option>Nenhuma visão</option>
+                                    )}
+                                    </select>
+                                    <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <PdfIcon /> PDF
+                                    </button>
+                                    <button 
+                                        onClick={handleExportCsv}
+                                        disabled={dreData.length === 0}
+                                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                    <CsvIcon /> CSV
+                                    </button>
+                                    <button 
+                                        onClick={handleExportXlsx}
+                                        disabled={dreData.length === 0}
+                                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                    <XlsxIcon /> XLSX
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between py-2 px-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md mb-4 mt-2">
+                        <div className="flex items-center gap-4 text-sm text-gray-300">
+                            <span className="font-bold text-white uppercase">DRE Visão Consolidada</span>
+                            <span className="text-gray-500">|</span>
+                            <span>{periods.find(p => p.retorno === selectedPeriod)?.display || 'Período'}</span>
+                            <span className="text-gray-500">|</span>
+                            <span>{visoes.find(v => v.id === selectedVisao)?.vis_nome || 'Visão'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                             <div className="flex items-center border-r border-gray-700 pr-3 mr-1 space-x-1">
+                                <button className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors" title="PDF"><PdfIcon /></button>
+                                <button onClick={handleExportCsv} disabled={dreData.length === 0} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:opacity-30" title="CSV"><CsvIcon /></button>
+                                <button onClick={handleExportXlsx} disabled={dreData.length === 0} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:opacity-30" title="XLSX"><XlsxIcon /></button>
+                             </div>
+                             <button 
+                                onClick={() => setIsHeaderExpanded(true)}
+                                className="flex items-center gap-1 text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+                            >
+                                <span>Expandir</span>
+                                <ChevronDownIcon />
+                            </button>
+                        </div>
                     </div>
                   )}
-                  {/* Stat Cards - Dynamically Rendered */}
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {[1, 2, 3, 4].map(pos => {
-                        const data = processCardData(pos);
-                        return (
-                            <StatCard 
-                                key={pos}
-                                title={data.title} 
-                                subtitle={data.subtitle} 
-                                value={data.value} 
-                                percentage={data.percentage} 
-                                variation={data.variation} 
-                            />
-                        );
-                    })}
-                  </div>
-
-                  {/* Filters and Title */}
-                  <div className="p-4 mt-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md">
-                    <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-                      <h2 className="text-lg font-bold text-white">DRE VISÃO CONSOLIDADA</h2>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <select 
-                          value={selectedPeriod}
-                          onChange={(e) => setSelectedPeriod(Number(e.target.value))}
-                          disabled={periodsLoading || periods.length === 0}
-                          className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                        >
-                          {periodsLoading ? (
-                            <option>Carregando...</option>
-                          ) : periods.length > 0 ? (
-                            periods.map(p => <option key={p.retorno} value={p.retorno}>{p.display}</option>)
-                          ) : (
-                            <option>Sem períodos</option>
-                          )}
-                        </select>
-                        <select
-                          value={selectedVisao}
-                          onChange={(e) => setSelectedVisao(e.target.value)}
-                          disabled={visoesLoading || visoes.length === 0}
-                          className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                        >
-                          {visoesLoading ? (
-                            <option>Carregando...</option>
-                          ) : visoes.length > 0 ? (
-                            visoes.map(v => (
-                              <option key={v.id} value={v.id} title={v.vis_descri || v.vis_nome}>
-                                {v.vis_nome}
-                              </option>
-                            ))
-                          ) : (
-                            <option>Nenhuma visão</option>
-                          )}
-                        </select>
-                        <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                          <PdfIcon /> PDF
-                        </button>
-                        <button 
-                            onClick={handleExportCsv}
-                            disabled={dreData.length === 0}
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <CsvIcon /> CSV
-                        </button>
-                        <button 
-                            onClick={handleExportXlsx}
-                            disabled={dreData.length === 0}
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <XlsxIcon /> XLSX
-                        </button>
-                      </div>
-                    </div>
-                  </div>
               </div>
               
               {/* Data Table */}

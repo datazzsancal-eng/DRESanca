@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -529,8 +527,8 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
 
       if (fetchLinesError) throw fetchLinesError;
 
-      const existingIds = new Set(existingLines?.map(l => l.id));
-      const incomingIds = new Set(linhasData.map(l => l.id).filter(id => id !== undefined));
+      const existingIds = new Set<string | number>(existingLines?.map((l: any) => l.id) || []);
+      const incomingIds = new Set(linhasData.map(l => l.id).filter((id): id is string | number => id !== undefined));
 
       // B. Identify IDs that were removed by the user
       const idsToDelete = [...existingIds].filter(id => !incomingIds.has(id));

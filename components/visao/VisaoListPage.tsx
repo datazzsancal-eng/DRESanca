@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -14,8 +15,10 @@ interface Visao {
   vis_descri: string | null;
   vis_ativo_sn: string;
   cliente_id: string | null;
+  template_id: string | null;
   dre_cliente: { cli_nome: string | null } | null;
   tab_tipo_visao: { tpvis_nome: string | null } | null;
+  dre_template: { dre_nome: string | null } | null;
   rel_visao_empresa: { empresa_id: string }[];
 }
 
@@ -99,8 +102,10 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
           vis_descri,
           vis_ativo_sn,
           cliente_id,
+          template_id,
           dre_cliente ( cli_nome ),
           tab_tipo_visao ( tpvis_nome ),
+          dre_template ( dre_nome ),
           rel_visao_empresa ( empresa_id )
         `)
         .eq('cliente_id', selectedClient.id); // Strict filtering by client context
@@ -204,6 +209,11 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
                     <p className="text-gray-400">
                         <span className="font-semibold text-gray-300">Tipo:</span> {visao.tab_tipo_visao?.tpvis_nome || 'N/A'}
                     </p>
+                    {visao.dre_template && (
+                        <p className="text-gray-400">
+                            <span className="font-semibold text-gray-300">Template:</span> {visao.dre_template.dre_nome}
+                        </p>
+                    )}
                 </div>
             </div>
             <div className="flex items-center justify-between pt-3 mt-3 space-x-4 border-t border-gray-700">
@@ -255,6 +265,7 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
             <tr>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Nome da Visão</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Tipo</th>
+              <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Template</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Cliente</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-center text-gray-400 uppercase">Ativa</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">Ações</th>
@@ -265,6 +276,7 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
               <tr key={visao.id} className="hover:bg-gray-700/50">
                 <td className="px-4 py-2 font-medium text-white whitespace-nowrap">{visao.vis_nome}</td>
                 <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{visao.tab_tipo_visao?.tpvis_nome || 'N/A'}</td>
+                <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{visao.dre_template?.dre_nome || '-'}</td>
                 <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{visao.dre_cliente?.cli_nome || 'N/A'}</td>
                 <td className="px-4 py-2 text-center whitespace-nowrap">
                   <span className={`px-2 py-1 text-xs font-semibold rounded-full ${visao.vis_ativo_sn === 'S' ? 'bg-green-800 text-green-300' : 'bg-red-800 text-red-300'}`}>

@@ -25,13 +25,7 @@ interface Visao {
   id: string;
   vis_nome: string;
   vis_descri: string | null;
-  cliente_id?: string | null;
-  cnpj_raiz?: string | null; // Added to filter templates
-}
-interface TemplateOption {
-    id: string;
-    dre_nome: string;
-    cliente_cnpj: string | null;
+  cliente_id?: string | null; 
 }
 interface DreDataRow {
     seq: number; // dre_linha_seq
@@ -450,12 +444,6 @@ const DashboardPage: React.FC = () => {
   const [selectedVisao, setSelectedVisao] = useState<string>('');
   const [visoesLoading, setVisoesLoading] = useState(true);
 
-  // State for template dropdown (NEW)
-  const [allTemplates, setAllTemplates] = useState<TemplateOption[]>([]);
-  const [availableTemplates, setAvailableTemplates] = useState<TemplateOption[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
-  const [templatesLoading, setTemplatesLoading] = useState(true);
-
   // State for dynamic cards and styles
   const [cardConfigs, setCardConfigs] = useState<CardConfig[]>([]);
   const [lineStyles, setLineStyles] = useState<Map<number, LineStyle>>(new Map());
@@ -519,11 +507,10 @@ const DashboardPage: React.FC = () => {
           const { data: visoesData, error: visaoError } = await supabase
             .from('dre_visao')
             .select(`
-                id, vis_nome, vis_descri, cliente_id, cnpj_raiz,
+                id, vis_nome, vis_descri, cliente_id,
                 rel_visao_empresa ( empresa_id )
             `)
             .eq('cliente_id', selectedClient.id)
-            .eq('vis_ativo_sn', 'S') // Only active visions
             .order('vis_nome');
 
           if (visaoError) throw visaoError;
@@ -558,25 +545,6 @@ const DashboardPage: React.FC = () => {
           setVisoesLoading(false);
       }
 
-      // Fetch ALL Templates for the client
-      setTemplatesLoading(true);
-      try {
-          const { data: tmplData, error: tmplError } = await supabase
-            .from('dre_template')
-            .select('id, dre_nome, cliente_cnpj')
-            .eq('cliente_id', selectedClient.id)
-            .eq('dre_ativo_sn', 'S')
-            .order('dre_nome');
-          
-          if (tmplError) throw tmplError;
-          setAllTemplates(tmplData || []);
-      } catch (err: any) {
-          console.error("Failed to fetch templates:", err);
-          currentWarnings.push(`Atenção: Não foi possível carregar os templates.`);
-      } finally {
-          setTemplatesLoading(false);
-      }
-
       if (currentWarnings.length > 0) {
           setWarning(currentWarnings.join(' '));
       }
@@ -585,68 +553,47 @@ const DashboardPage: React.FC = () => {
     if (activePage === 'dashboard') {
         fetchDropdownData();
     }
-  }, [activePage, selectedClient, user]); 
+  }, [activePage, selectedClient, user]); // Re-fetch if selectedClient or user changes
   
-  // Logic to Filter Templates based on Selected Vision
-  useEffect(() => {
-      if (!selectedVisao || allTemplates.length === 0) {
-          setAvailableTemplates([]);
-          setSelectedTemplate('');
-          return;
-      }
-
-      const visionObj = visoes.find(v => v.id === selectedVisao);
-      if (!visionObj) return;
-
-      // Filter Logic:
-      // 1. Always include Global Templates (where cliente_cnpj is null)
-      // 2. If Vision has a specific CNPJ Root (CNPJ RAIZ or GRUPO type), include matching templates
-      // 3. If Vision is Custom, allow all templates (fallback to flexibility) OR require strict matching logic if needed
-      
-      const filtered = allTemplates.filter(t => {
-          // Global Template
-          if (!t.cliente_cnpj) return true;
-          
-          // Specific Template matching Vision Root
-          if (visionObj.cnpj_raiz && visionObj.cnpj_raiz === t.cliente_cnpj) return true;
-          
-          // Fallback: If it's a mixed vision (no single root in main table), we currently allow global only or all?
-          // For now, let's allow ALL if vision has no root, to avoid blocking valid use cases in custom visions
-          if (!visionObj.cnpj_raiz) return true;
-
-          return false;
-      });
-
-      setAvailableTemplates(filtered);
-      
-      // Auto-select first if none selected or if current selection is invalid
-      if (filtered.length > 0) {
-          const currentIsValid = filtered.some(t => t.id === selectedTemplate);
-          if (!selectedTemplate || !currentIsValid) {
-              setSelectedTemplate(filtered[0].id);
-          }
-      } else {
-          setSelectedTemplate('');
-      }
-
-  }, [selectedVisao, visoes, allTemplates]);
-
-
-  // Fetch Template Configurations (Cards and Line Styles) when selectedTemplate changes
+  // Fetch Template Configurations (Cards and Line Styles) when selectedVisao changes
   useEffect(() => {
     const fetchTemplateConfig = async () => {
-        if (!selectedTemplate) {
+        if (!selectedVisao) {
             setCardConfigs([]);
             setLineStyles(new Map());
             return;
         }
         
         try {
-            // 3. Fetch the card configurations for the SELECTED template
+            // 1. Find the Client ID associated with the selected View
+            const visao = visoes.find(v => v.id === selectedVisao);
+            if (!visao || !visao.cliente_id) {
+                 setCardConfigs([]);
+                 setLineStyles(new Map());
+                 return;
+            }
+
+            // 2. Find the ACTIVE template for this client
+            const { data: template, error: templateError } = await supabase
+                .from('dre_template')
+                .select('id')
+                .eq('cliente_id', visao.cliente_id)
+                .eq('dre_ativo_sn', 'S')
+                .limit(1)
+                .single();
+            
+            if (templateError || !template) {
+                console.warn("Nenhum template ativo encontrado para o cliente desta visão.");
+                setCardConfigs([]);
+                setLineStyles(new Map());
+                return;
+            }
+
+            // 3. Fetch the card configurations
             const { data: cards, error: cardsError } = await supabase
                 .from('dre_template_card')
                 .select('*')
-                .eq('dre_template_id', selectedTemplate);
+                .eq('dre_template_id', template.id);
             
             if (cardsError) {
                 console.error("Erro ao buscar configurações dos cards:", cardsError);
@@ -655,7 +602,7 @@ const DashboardPage: React.FC = () => {
                 setCardConfigs(cards || []);
             }
 
-            // 4. Fetch Line Styles (joined with tab_estilo_linha) for the SELECTED template
+            // 4. Fetch Line Styles (joined with tab_estilo_linha)
             const { data: lines, error: linesError } = await supabase
                 .from('dre_template_linhas')
                 .select(`
@@ -665,7 +612,7 @@ const DashboardPage: React.FC = () => {
                         est_nivel_ident
                     )
                 `)
-                .eq('dre_template_id', selectedTemplate);
+                .eq('dre_template_id', template.id);
 
             if (linesError) {
                 console.error("Erro ao buscar estilos das linhas:", linesError);
@@ -693,13 +640,13 @@ const DashboardPage: React.FC = () => {
     };
 
     fetchTemplateConfig();
-  }, [selectedTemplate]);
+  }, [selectedVisao, visoes]);
 
 
   // Fetch Raw DRE data when filters change
   useEffect(() => {
     const fetchRawData = async () => {
-        if (activePage !== 'dashboard' || !selectedVisao || !selectedPeriod || !selectedTemplate) {
+        if (activePage !== 'dashboard' || !selectedVisao || !selectedPeriod) {
             setRawDreData([]);
             setDreData([]);
             return;
@@ -710,8 +657,7 @@ const DashboardPage: React.FC = () => {
         setWarning(null);
 
         try {
-            // Updated URL to include 'modelo' parameter
-            const url = `https://webhook.moondog-ia.tech/webhook/dre?carga=${selectedPeriod}&id=${selectedVisao}&modelo=${selectedTemplate}`;
+            const url = `https://webhook.moondog-ia.tech/webhook/dre?carga=${selectedPeriod}&id=${selectedVisao}`;
             const response = await fetch(url);
 
             if (!response.ok) {
@@ -760,7 +706,7 @@ const DashboardPage: React.FC = () => {
     };
 
     fetchRawData();
-  }, [activePage, selectedVisao, selectedPeriod, selectedTemplate]);
+  }, [activePage, selectedVisao, selectedPeriod]);
 
   // Process Raw Data into Display Data (Formatted) when Raw Data or Styles change
   useEffect(() => {
@@ -1189,25 +1135,6 @@ const DashboardPage: React.FC = () => {
                                         <option>Nenhuma visão</option>
                                     )}
                                     </select>
-                                    <select
-                                        value={selectedTemplate}
-                                        onChange={(e) => setSelectedTemplate(e.target.value)}
-                                        disabled={templatesLoading || availableTemplates.length === 0}
-                                        className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                                        title="Selecione o Modelo (Template) de visualização"
-                                    >
-                                        {templatesLoading ? (
-                                            <option>Carregando...</option>
-                                        ) : availableTemplates.length > 0 ? (
-                                            availableTemplates.map(t => (
-                                                <option key={t.id} value={t.id}>
-                                                    {t.dre_nome} {t.cliente_cnpj ? '' : '(Global)'}
-                                                </option>
-                                            ))
-                                        ) : (
-                                            <option>Sem templates</option>
-                                        )}
-                                    </select>
                                     <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                                     <PdfIcon /> PDF
                                     </button>
@@ -1237,8 +1164,6 @@ const DashboardPage: React.FC = () => {
                             <span>{periods.find(p => p.retorno === selectedPeriod)?.display || 'Período'}</span>
                             <span className="text-gray-500">|</span>
                             <span>{visoes.find(v => v.id === selectedVisao)?.vis_nome || 'Visão'}</span>
-                            <span className="text-gray-500">|</span>
-                            <span>{allTemplates.find(t => t.id === selectedTemplate)?.dre_nome || 'Modelo'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                              <div className="flex items-center border-r border-gray-700 pr-3 mr-1 space-x-1">
@@ -1271,7 +1196,7 @@ const DashboardPage: React.FC = () => {
                     </div>
                 ) : (
                     <div className="flex flex-col items-center justify-center text-center p-8 min-h-[400px]">
-                        {(!selectedPeriod || !selectedVisao || !selectedTemplate) ? (
+                        {(!selectedPeriod || !selectedVisao) ? (
                             <>
                                 <div className="w-16 h-16 bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1279,7 +1204,7 @@ const DashboardPage: React.FC = () => {
                                     </svg>
                                 </div>
                                 <h3 className="text-xl font-bold text-white mb-2">Selecione os Filtros</h3>
-                                <p className="text-gray-400 max-w-sm">Escolha um Período, uma Visão e um Modelo (Template) acima para carregar os dados do DRE.</p>
+                                <p className="text-gray-400 max-w-sm">Escolha um Período e uma Visão acima para carregar os dados do DRE.</p>
                             </>
                         ) : (
                             <>

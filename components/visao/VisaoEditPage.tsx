@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Shuttle from '../shared/Shuttle';
@@ -8,13 +7,11 @@ import { useAuth } from '../../contexts/AuthContext';
 interface Cliente { id: string; cli_nome: string; }
 interface Empresa { id: string; emp_nome: string; emp_cnpj_raiz: string; emp_nome_reduz: string | null; emp_nome_cmpl: string | null; emp_cnpj: string | null; emp_cod_integra: string | null; }
 interface TipoVisao { id: number; tpvis_nome: string; }
-interface Template { id: string; dre_nome: string; }
 interface VisaoHeader {
   id?: string;
   vis_nome: string;
   tipo_visao_id: number | null;
   cliente_id: string | null;
-  template_id: string | null;
   cnpj_raiz: string | null;
   vis_descri: string | null;
   vis_ativo_sn: string;
@@ -24,7 +21,6 @@ const initialHeaderState: VisaoHeader = {
   vis_nome: '',
   tipo_visao_id: null,
   cliente_id: null,
-  template_id: null,
   cnpj_raiz: null,
   vis_descri: null,
   vis_ativo_sn: 'S',
@@ -41,7 +37,6 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
   const [headerData, setHeaderData] = useState<VisaoHeader>(initialHeaderState);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [tiposVisao, setTiposVisao] = useState<TipoVisao[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
   const [empresasDoCliente, setEmpresasDoCliente] = useState<Empresa[]>([]);
   const [selectedEmpresas, setSelectedEmpresas] = useState<Set<string>>(new Set());
   const [selectedGrupoCnpjs, setSelectedGrupoCnpjs] = useState<Set<string>>(new Set());
@@ -161,17 +156,16 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
     fetchInitialData();
   }, [visaoId, user]);
 
-  // Fetch companies, CNPJs AND Templates when client changes
+  // Fetch companies and CNPJs when client changes
   useEffect(() => {
     const fetchClientData = async () => {
       if (!headerData.cliente_id) {
         setEmpresasDoCliente([]);
-        setTemplates([]);
         return;
       }
       setLoading(true);
       try {
-        const empresaQuery = supabase
+        let query = supabase
             .from('dre_empresa')
             .select('id, emp_nome, emp_cnpj_raiz, emp_nome_reduz, emp_nome_cmpl, emp_cnpj, emp_cod_integra')
             .eq('cliente_id', headerData.cliente_id);
@@ -182,33 +176,19 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
              // If allow list is empty (shouldn't happen if client is in allowedClientIds but fullaccess is false), array will be empty -> no rows
              const allowedIds = Array.from(userPermissions.allowedCompanyIds);
              if (allowedIds.length > 0) {
-                 empresaQuery.in('id', allowedIds);
+                 query = query.in('id', allowedIds);
              } else {
                  setEmpresasDoCliente([]);
-                 setTemplates([]);
                  setLoading(false);
                  return;
              }
         }
 
-        // Fetch Templates for the selected client
-        const templateQuery = supabase
-            .from('dre_template')
-            .select('id, dre_nome')
-            .eq('cliente_id', headerData.cliente_id)
-            .eq('dre_ativo_sn', 'S')
-            .order('dre_nome');
-
-        const [empRes, templRes] = await Promise.all([empresaQuery, templateQuery]);
-
-        if (empRes.error) throw empRes.error;
-        if (templRes.error) throw templRes.error;
-
-        setEmpresasDoCliente(empRes.data || []);
-        setTemplates(templRes.data || []);
-
+        const { data, error } = await query;
+        if (error) throw error;
+        setEmpresasDoCliente(data || []);
       } catch (err: any) {
-        setError(`Falha ao buscar dados do cliente: ${err.message}`);
+        setError(`Falha ao buscar empresas do cliente: ${err.message}`);
       } finally {
         setLoading(false);
       }
@@ -240,10 +220,6 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
     setHeaderData(prev => {
       const newState = { ...prev, [name]: finalValue };
       if (['cliente_id', 'tipo_visao_id'].includes(name)) {
-        // Reset related fields if Client or Vision Type changes
-        if (name === 'cliente_id') {
-            newState.template_id = null; // Reset template as well
-        }
         newState.cnpj_raiz = null;
         setSelectedGrupoCnpjs(new Set());
         setSelectedEmpresas(new Set());
@@ -345,13 +321,6 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
             <select name="cliente_id" value={headerData.cliente_id || ''} onChange={handleHeaderChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md">
               <option value="">Selecione...</option>
               {clientes.map(c => <option key={c.id} value={c.id}>{c.cli_nome}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300">Template Associado</label>
-            <select name="template_id" value={headerData.template_id || ''} onChange={handleHeaderChange} disabled={!headerData.cliente_id} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md disabled:bg-gray-600 disabled:cursor-not-allowed">
-              <option value="">Selecione um Template</option>
-              {templates.map(t => <option key={t.id} value={t.id}>{t.dre_nome}</option>)}
             </select>
           </div>
           <div>

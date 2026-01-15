@@ -1189,7 +1189,25 @@ const DashboardPage: React.FC = () => {
                                         <option>Nenhuma visão</option>
                                     )}
                                     </select>
-                                    {/* Template Selection removed from UI, but internal logic remains for default selection */}
+                                    <select
+                                        value={selectedTemplate}
+                                        onChange={(e) => setSelectedTemplate(e.target.value)}
+                                        disabled={templatesLoading || availableTemplates.length === 0}
+                                        className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                                        title="Selecione o Modelo (Template) de visualização"
+                                    >
+                                        {templatesLoading ? (
+                                            <option>Carregando...</option>
+                                        ) : availableTemplates.length > 0 ? (
+                                            availableTemplates.map(t => (
+                                                <option key={t.id} value={t.id}>
+                                                    {t.dre_nome} {t.cliente_cnpj ? '' : '(Global)'}
+                                                </option>
+                                            ))
+                                        ) : (
+                                            <option>Sem templates</option>
+                                        )}
+                                    </select>
                                     <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                                     <PdfIcon /> PDF
                                     </button>
@@ -1219,6 +1237,8 @@ const DashboardPage: React.FC = () => {
                             <span>{periods.find(p => p.retorno === selectedPeriod)?.display || 'Período'}</span>
                             <span className="text-gray-500">|</span>
                             <span>{visoes.find(v => v.id === selectedVisao)?.vis_nome || 'Visão'}</span>
+                            <span className="text-gray-500">|</span>
+                            <span>{allTemplates.find(t => t.id === selectedTemplate)?.dre_nome || 'Modelo'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                              <div className="flex items-center border-r border-gray-700 pr-3 mr-1 space-x-1">
@@ -1259,7 +1279,7 @@ const DashboardPage: React.FC = () => {
                                     </svg>
                                 </div>
                                 <h3 className="text-xl font-bold text-white mb-2">Selecione os Filtros</h3>
-                                <p className="text-gray-400 max-w-sm">Escolha um Período e uma Visão acima para carregar os dados do DRE.</p>
+                                <p className="text-gray-400 max-w-sm">Escolha um Período, uma Visão e um Modelo (Template) acima para carregar os dados do DRE.</p>
                             </>
                         ) : (
                             <>

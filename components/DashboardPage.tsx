@@ -85,8 +85,6 @@ const PdfIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5
 const CsvIcon = () => <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className="h-5 w-5 mr-1" />;
 const XlsxIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" className="h-5 w-5 mr-1 text-green-500" />;
 const SwitchIcon = () => <Icon path="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" className="h-4 w-4" />;
-const BellIcon = () => <Icon path="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />;
-const KeyIcon = () => <Icon path="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />;
 
 const MenuIcon = () => <Icon path="M4 6h16M4 12h16M4 18h16" />;
 const CloseIcon = () => <Icon path="M6 18L18 6M6 6l12 12" />;
@@ -97,7 +95,7 @@ const SancalLogo = () => (
   <img 
     src="https://www.sancal.com.br/wp-content/uploads/elementor/thumbs/logo-white-qfydekyggou3snwsfrlsc913ym97p1hveemqwoinls.png" 
     alt="Sancal Logo" 
-    className="h-8 w-auto" 
+    className="h-8 w-auto"
   />
 );
 
@@ -205,8 +203,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, acti
            onClick={() => setIsSidebarOpen(false)}>
       </div>
       <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-800 text-white transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:inset-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-64'}`}>
-        {/* Adjusted Height to h-20 (80px) */}
-        <div className={`flex items-center h-20 px-4 border-b border-gray-700 shrink-0 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+        {/* Adjusted Height to h-16 (standard nav height) */}
+        <div className={`flex items-center h-16 px-4 border-b border-gray-700 shrink-0 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
           {!isCollapsed ? <SancalLogo /> : <DashboardIcon />}
           <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
               <CloseIcon />
@@ -421,12 +419,6 @@ const DashboardPage: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState('dashboard');
   
-  // User Menu State
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  
-  // Header Expand/Collapse State
-  const [isHeaderExpanded, setIsHeaderExpanded] = useState(true);
-
   const [rawDreData, setRawDreData] = useState<any[]>([]); // Data from Webhook
   const [dreData, setDreData] = useState<DreDataRow[]>([]); // Formatted data for table
   
@@ -1006,8 +998,8 @@ const DashboardPage: React.FC = () => {
         onChangeClient={() => selectClient(null)}
       />
       <div className="flex flex-col flex-1 w-full overflow-y-auto">
-        {/* Adjusted Header Height to h-20 (80px) */}
-        <header className="flex items-center justify-between h-20 px-6 bg-gray-800 border-b border-gray-700 sticky top-0 z-20">
+        {/* Adjusted Header Height to h-16 (standard nav height) */}
+        <header className="flex items-center justify-between h-16 px-6 bg-gray-800 border-b border-gray-700 sticky top-0 z-20">
             <div className="flex items-center">
                 <button className="text-gray-300 lg:hidden mr-4" onClick={() => setIsSidebarOpen(true)}>
                     <MenuIcon />
@@ -1015,172 +1007,110 @@ const DashboardPage: React.FC = () => {
                 <h1 className="text-xl font-semibold text-white">{pageTitles[activePage] || 'Dashboard'}</h1>
             </div>
             
-            <div className="relative">
+            <div className="flex items-center gap-4">
+                <div className="hidden md:block text-right">
+                    <p className="text-sm font-bold text-white leading-tight">{profile?.full_name || 'Usuário'}</p>
+                    <p className="text-xs text-gray-400 truncate max-w-[150px] leading-tight">{user?.email}</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md border border-indigo-500 hover:bg-indigo-500 transition-colors cursor-default">
+                    {getInitials(profile?.full_name)}
+                </div>
+                <div className="border-l border-gray-600 h-8 mx-2"></div>
                 <button 
-                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                    className="flex items-center gap-4 focus:outline-none group"
+                    onClick={signOut} 
+                    className="p-2 text-gray-300 hover:text-red-400 hover:bg-gray-700 rounded-full transition-colors flex items-center gap-2 group"
+                    title="Sair do Sistema"
                 >
-                    <div className="hidden md:block text-right">
-                        <p className="text-sm font-bold text-white leading-tight group-hover:text-indigo-400 transition-colors">{profile?.full_name || 'Usuário'}</p>
-                        <p className="text-xs text-gray-400 truncate max-w-[150px] leading-tight">{user?.email}</p>
-                    </div>
-                    <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md border border-indigo-500 group-hover:bg-indigo-500 transition-colors">
-                        {getInitials(profile?.full_name)}
-                    </div>
-                    <div className="text-gray-400 group-hover:text-white transition-colors">
-                        <ChevronDownIcon />
-                    </div>
+                    <LogoutIcon />
+                    <span className="hidden lg:inline text-sm font-medium group-hover:text-red-400 transition-colors">Sair</span>
                 </button>
-
-                {isUserMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-56 bg-gray-800 rounded-md shadow-lg py-1 ring-1 ring-black ring-opacity-5 z-50 border border-gray-700">
-                        <button 
-                            className="flex items-center w-full px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white text-left group"
-                            onClick={() => console.log('Notificações')}
-                        >
-                            <span className="mr-3 text-gray-400 group-hover:text-indigo-400"><BellIcon /></span>
-                            Notificações
-                        </button>
-                        <button 
-                            className="flex items-center w-full px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white text-left group"
-                            onClick={() => console.log('Troca de Senha')}
-                        >
-                            <span className="mr-3 text-gray-400 group-hover:text-indigo-400"><KeyIcon /></span>
-                            Troca de Senha
-                        </button>
-                        <div className="border-t border-gray-700 my-1"></div>
-                        <button 
-                            onClick={signOut} 
-                            className="flex items-center w-full px-4 py-2 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 text-left group"
-                        >
-                            <span className="mr-3"><LogoutIcon /></span>
-                            Sair
-                        </button>
-                    </div>
-                )}
             </div>
         </header>
 
         <main className="p-4">
           {activePage === 'dashboard' && (
             <div>
-              {/* Sticky container for cards and filters. Corrected top to 20 (80px) */}
-              <div className="sticky top-20 z-10 bg-gray-900 -mx-4 px-4 shadow-sm transition-all duration-300">
-                  {/* Collapsible Section */}
-                  {isHeaderExpanded ? (
-                    <div className="py-4 mb-4 border-b border-gray-800">
-                        {(error || warning) && (
-                            <div className={`p-3 mb-4 text-sm rounded-lg ${error ? 'text-red-400 bg-red-900/50 border border-red-800' : 'text-yellow-400 bg-yellow-900/50 border border-yellow-800'}`}>
-                                {error || warning}
-                            </div>
-                        )}
-                        {/* Stat Cards - Dynamically Rendered */}
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
-                            {[1, 2, 3, 4].map(pos => {
-                                const data = processCardData(pos);
-                                return (
-                                    <StatCard 
-                                        key={pos}
-                                        title={data.title} 
-                                        subtitle={data.subtitle} 
-                                        value={data.value} 
-                                        percentage={data.percentage} 
-                                        variation={data.variation} 
-                                    />
-                                );
-                            })}
-                        </div>
-
-                        {/* Filters and Title */}
-                        <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md relative">
-                            <button 
-                                onClick={() => setIsHeaderExpanded(false)}
-                                className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
-                                title="Recolher Filtros"
-                            >
-                                <ChevronUpIcon />
-                            </button>
-                            <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center pr-8">
-                                <h2 className="text-lg font-bold text-white">DRE VISÃO CONSOLIDADA</h2>
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <select 
-                                    value={selectedPeriod}
-                                    onChange={(e) => setSelectedPeriod(Number(e.target.value))}
-                                    disabled={periodsLoading || periods.length === 0}
-                                    className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                                    >
-                                    {periodsLoading ? (
-                                        <option>Carregando...</option>
-                                    ) : periods.length > 0 ? (
-                                        periods.map(p => <option key={p.retorno} value={p.retorno}>{p.display}</option>)
-                                    ) : (
-                                        <option>Sem períodos</option>
-                                    )}
-                                    </select>
-                                    <select
-                                    value={selectedVisao}
-                                    onChange={(e) => setSelectedVisao(e.target.value)}
-                                    disabled={visoesLoading || visoes.length === 0}
-                                    className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                                    >
-                                    {visoesLoading ? (
-                                        <option>Carregando...</option>
-                                    ) : visoes.length > 0 ? (
-                                        visoes.map(v => (
-                                        <option key={v.id} value={v.id} title={v.vis_descri || v.vis_nome}>
-                                            {v.vis_nome}
-                                        </option>
-                                        ))
-                                    ) : (
-                                        <option>Nenhuma visão</option>
-                                    )}
-                                    </select>
-                                    <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                                    <PdfIcon /> PDF
-                                    </button>
-                                    <button 
-                                        onClick={handleExportCsv}
-                                        disabled={dreData.length === 0}
-                                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                    <CsvIcon /> CSV
-                                    </button>
-                                    <button 
-                                        onClick={handleExportXlsx}
-                                        disabled={dreData.length === 0}
-                                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                    <XlsxIcon /> XLSX
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between py-2 px-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md mb-4 mt-2">
-                        <div className="flex items-center gap-4 text-sm text-gray-300">
-                            <span className="font-bold text-white uppercase">DRE Visão Consolidada</span>
-                            <span className="text-gray-500">|</span>
-                            <span>{periods.find(p => p.retorno === selectedPeriod)?.display || 'Período'}</span>
-                            <span className="text-gray-500">|</span>
-                            <span>{visoes.find(v => v.id === selectedVisao)?.vis_nome || 'Visão'}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                             <div className="flex items-center border-r border-gray-700 pr-3 mr-1 space-x-1">
-                                <button className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors" title="PDF"><PdfIcon /></button>
-                                <button onClick={handleExportCsv} disabled={dreData.length === 0} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:opacity-30" title="CSV"><CsvIcon /></button>
-                                <button onClick={handleExportXlsx} disabled={dreData.length === 0} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:opacity-30" title="XLSX"><XlsxIcon /></button>
-                             </div>
-                             <button 
-                                onClick={() => setIsHeaderExpanded(true)}
-                                className="flex items-center gap-1 text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
-                            >
-                                <span>Expandir</span>
-                                <ChevronDownIcon />
-                            </button>
-                        </div>
+              {/* Sticky container for cards and filters */}
+              <div className="sticky top-16 z-10 bg-gray-900 -mx-4 px-4 py-4 mb-4">
+                  {(error || warning) && (
+                    <div className={`p-3 mb-4 text-sm rounded-lg ${error ? 'text-red-400 bg-red-900/50 border border-red-800' : 'text-yellow-400 bg-yellow-900/50 border border-yellow-800'}`}>
+                        {error || warning}
                     </div>
                   )}
+                  {/* Stat Cards - Dynamically Rendered */}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {[1, 2, 3, 4].map(pos => {
+                        const data = processCardData(pos);
+                        return (
+                            <StatCard 
+                                key={pos}
+                                title={data.title} 
+                                subtitle={data.subtitle} 
+                                value={data.value} 
+                                percentage={data.percentage} 
+                                variation={data.variation} 
+                            />
+                        );
+                    })}
+                  </div>
+
+                  {/* Filters and Title */}
+                  <div className="p-4 mt-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md">
+                    <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+                      <h2 className="text-lg font-bold text-white">DRE VISÃO CONSOLIDADA</h2>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select 
+                          value={selectedPeriod}
+                          onChange={(e) => setSelectedPeriod(Number(e.target.value))}
+                          disabled={periodsLoading || periods.length === 0}
+                          className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                        >
+                          {periodsLoading ? (
+                            <option>Carregando...</option>
+                          ) : periods.length > 0 ? (
+                            periods.map(p => <option key={p.retorno} value={p.retorno}>{p.display}</option>)
+                          ) : (
+                            <option>Sem períodos</option>
+                          )}
+                        </select>
+                        <select
+                          value={selectedVisao}
+                          onChange={(e) => setSelectedVisao(e.target.value)}
+                          disabled={visoesLoading || visoes.length === 0}
+                          className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                        >
+                          {visoesLoading ? (
+                            <option>Carregando...</option>
+                          ) : visoes.length > 0 ? (
+                            visoes.map(v => (
+                              <option key={v.id} value={v.id} title={v.vis_descri || v.vis_nome}>
+                                {v.vis_nome}
+                              </option>
+                            ))
+                          ) : (
+                            <option>Nenhuma visão</option>
+                          )}
+                        </select>
+                        <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                          <PdfIcon /> PDF
+                        </button>
+                        <button 
+                            onClick={handleExportCsv}
+                            disabled={dreData.length === 0}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <CsvIcon /> CSV
+                        </button>
+                        <button 
+                            onClick={handleExportXlsx}
+                            disabled={dreData.length === 0}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <XlsxIcon /> XLSX
+                        </button>
+                      </div>
+                    </div>
+                  </div>
               </div>
               
               {/* Data Table */}

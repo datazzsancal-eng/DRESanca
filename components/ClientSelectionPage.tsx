@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useAuth, ClientContext } from '../contexts/AuthContext';
 
 const ClientSelectionPage: React.FC = () => {
-  const { availableClients, selectClient, signOut, profile } = useAuth();
+  const { availableClients, selectClient, signOut, profile, clearClientData } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string>('');
 
@@ -20,6 +20,12 @@ const ClientSelectionPage: React.FC = () => {
     if (client) {
       selectClient(client);
     }
+  };
+
+  const handleClearCache = () => {
+      clearClientData();
+      // Optional: Force reload to ensure clean state if needed, though context update is sufficient for this app
+      // window.location.reload(); 
   };
 
   return (
@@ -104,7 +110,7 @@ const ClientSelectionPage: React.FC = () => {
             </button>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-gray-700 flex-shrink-0">
+        <div className="mt-6 pt-4 border-t border-gray-700 flex-shrink-0 flex flex-col space-y-2">
           <button
             onClick={signOut}
             className="flex items-center justify-center w-full px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors"
@@ -113,6 +119,14 @@ const ClientSelectionPage: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
             Sair da conta
+          </button>
+          
+          <button
+            onClick={handleClearCache}
+            className="flex items-center justify-center w-full px-2 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            title="Limpa o cliente selecionado do armazenamento local"
+          >
+            Limpar cache de seleção
           </button>
         </div>
       </div>

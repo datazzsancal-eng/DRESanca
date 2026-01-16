@@ -24,6 +24,7 @@ interface AuthContextType {
   availableClients: ClientContext[];
   selectedClient: ClientContext | null;
   selectClient: (client: ClientContext | null) => void;
+  clearClientData: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -127,6 +128,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const clearClientData = () => {
+    setSelectedClientState(null);
+    localStorage.removeItem('dre_selected_client');
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -209,6 +215,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     availableClients,
     selectedClient,
     selectClient,
+    clearClientData,
     signOut,
   }), [session, user, profile, loading, availableClients, selectedClient]);
 

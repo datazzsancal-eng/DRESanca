@@ -1037,25 +1037,9 @@ const DashboardPage: React.FC = () => {
                         {error || warning}
                     </div>
                   )}
-                  {/* Stat Cards - Dynamically Rendered */}
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {[1, 2, 3, 4].map(pos => {
-                        const data = processCardData(pos);
-                        return (
-                            <StatCard 
-                                key={pos}
-                                title={data.title} 
-                                subtitle={data.subtitle} 
-                                value={data.value} 
-                                percentage={data.percentage} 
-                                variation={data.variation} 
-                            />
-                        );
-                    })}
-                  </div>
 
-                  {/* Filters and Title */}
-                  <div className="p-4 mt-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md">
+                  {/* Filters and Title - MOVED ABOVE CARDS */}
+                  <div className="p-4 mb-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md">
                     <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
                       <h2 className="text-lg font-bold text-white">DRE VISÃO CONSOLIDADA</h2>
                       <div className="flex flex-wrap items-center gap-2">
@@ -1110,6 +1094,23 @@ const DashboardPage: React.FC = () => {
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Stat Cards - Dynamically Rendered */}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {[1, 2, 3, 4].map(pos => {
+                        const data = processCardData(pos);
+                        return (
+                            <StatCard 
+                                key={pos}
+                                title={data.title} 
+                                subtitle={data.subtitle} 
+                                value={data.value} 
+                                percentage={data.percentage} 
+                                variation={data.variation} 
+                            />
+                        );
+                    })}
                   </div>
               </div>
               

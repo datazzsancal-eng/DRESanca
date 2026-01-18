@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 
@@ -47,6 +47,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   });
 
+  // Refs para evitar loops e race conditions
+  const isInitializingRef = useRef(false);
+  const isFetchingClientsRef = useRef(false);
+  const selectedClientRef = useRef<ClientContext | null>(selectedClient);
+
+  // Atualizar ref quando selectedClient mudar
+  useEffect(() => {
+    selectedClientRef.current = selectedClient;
+  }, [selectedClient]);
+
   const fetchProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -65,7 +75,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const fetchUserClients = async (userId: string) => {
+  const fetchUserClients = useCallback(async (userId: string, skipAutoSelect: boolean = false) => {
+    // Prevenir múltiplas chamadas simultâneas
+    if (isFetchingClientsRef.current) {
+      console.log('fetchUserClients já está em execução, ignorando chamada duplicada');
+      return;
+    }
+
+    isFetchingClientsRef.current = true;
+
     try {
       const { data: relData, error: relError } = await supabase
         .from('rel_prof_cli_empr')
@@ -78,7 +96,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!relData || relData.length === 0) {
           setAvailableClients([]);
-          if (selectedClient) {
+          const currentSelected = selectedClientRef.current;
+          if (currentSelected) {
               setSelectedClientState(null);
               localStorage.removeItem('dre_selected_client');
           }
@@ -98,48 +117,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const clients = clientsData || [];
       setAvailableClients(clients);
 
-      // Validate selected client against new list
-      if (selectedClient) {
-          const isValid = clients.find(c => c.id === selectedClient.id);
+      // Usar ref para obter o valor atualizado sem causar re-renders
+      const currentSelected = selectedClientRef.current;
+
+      // Validar cliente selecionado contra a nova lista
+      if (currentSelected) {
+          const isValid = clients.find((c: ClientContext) => c.id === currentSelected.id);
           if (!isValid) {
+              // Cliente não é mais válido, remover
               setSelectedClientState(null);
               localStorage.removeItem('dre_selected_client');
-          } else if (isValid.cli_nome !== selectedClient.cli_nome) {
-              // Update local state if name changed
-              selectClient(isValid);
+          } else if (isValid.cli_nome !== currentSelected.cli_nome) {
+              // Nome mudou, atualizar silenciosamente sem causar loop
+              const updatedClient = { ...isValid };
+              setSelectedClientState(updatedClient);
+              localStorage.setItem('dre_selected_client', JSON.stringify(updatedClient));
           }
-      } else if (clients.length === 1) {
-          // Auto-select if only one
-          selectClient(clients[0]);
+      } else if (!skipAutoSelect && clients.length === 1) {
+          // Auto-selecionar se houver apenas um cliente
+          const singleClient = clients[0];
+          setSelectedClientState(singleClient);
+          localStorage.setItem('dre_selected_client', JSON.stringify(singleClient));
       }
 
     } catch (error) {
       console.error('Error fetching user clients:', error);
       setAvailableClients([]);
+    } finally {
+      isFetchingClientsRef.current = false;
     }
-  };
+  }, []);
 
-  const selectClient = (client: ClientContext | null) => {
+  const selectClient = useCallback((client: ClientContext | null) => {
     setSelectedClientState(client);
     if (client) {
       localStorage.setItem('dre_selected_client', JSON.stringify(client));
     } else {
       localStorage.removeItem('dre_selected_client');
     }
-  };
+  }, []);
 
-  const clearClientData = () => {
+  const clearClientData = useCallback(() => {
     setSelectedClientState(null);
     localStorage.removeItem('dre_selected_client');
-  };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
+    let subscription: { unsubscribe: () => void } | null = null;
 
     const initAuth = async () => {
+        if (isInitializingRef.current) {
+          console.log('initAuth já está em execução, ignorando chamada duplicada');
+          return;
+        }
+
+        isInitializingRef.current = true;
+
         try {
             const { data: { session }, error } = await supabase.auth.getSession();
-            if (error) console.error("Get session error:", error);
+            if (error) {
+              console.error("Get session error:", error);
+              if (mounted) setLoading(false);
+              return;
+            }
 
             if (mounted) {
                 setSession(session);
@@ -148,48 +189,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (session?.user) {
                     await Promise.all([
                         fetchProfile(session.user.id),
-                        fetchUserClients(session.user.id)
+                        fetchUserClients(session.user.id, false)
                     ]);
                 }
             }
         } catch (err) {
             console.error("Auth init exception:", err);
         } finally {
-            if (mounted) setLoading(false);
+            if (mounted) {
+              setLoading(false);
+              isInitializingRef.current = false;
+            }
         }
     };
 
     initAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Configurar listener de mudanças de autenticação
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event: string, session: Session | null) => {
         if (!mounted) return;
+
+        // Ignorar eventos durante a inicialização para evitar duplicação
+        if (isInitializingRef.current && event === 'SIGNED_IN') {
+          console.log('Ignorando SIGNED_IN durante inicialização');
+          return;
+        }
         
         setSession(session);
         setUser(session?.user ?? null);
 
         if (event === 'SIGNED_IN' && session?.user) {
-             // Only fetch if we are not already loading (to avoid double fetch with initAuth)
-             // However, onAuthStateChange often fires after getSession in initialization flow
-             await Promise.all([
-                fetchProfile(session.user.id),
-                fetchUserClients(session.user.id)
-             ]);
+             // Buscar dados do usuário
+             try {
+               await Promise.all([
+                  fetchProfile(session.user.id),
+                  fetchUserClients(session.user.id, false)
+               ]);
+             } catch (err) {
+               console.error('Error fetching user data on SIGNED_IN:', err);
+             }
         } else if (event === 'SIGNED_OUT') {
             setProfile(null);
             setAvailableClients([]);
             setSelectedClientState(null);
             localStorage.removeItem('dre_selected_client');
             setLoading(false);
+        } else if (event === 'TOKEN_REFRESHED') {
+            // Token foi atualizado, garantir que loading está false
+            setLoading(false);
         }
     });
 
+    subscription = authSubscription;
+
     return () => {
       mounted = false;
-      subscription.unsubscribe();
+      isInitializingRef.current = false;
+      isFetchingClientsRef.current = false;
+      if (subscription) {
+        subscription.unsubscribe();
+      }
     };
-  }, []);
+  }, [fetchUserClients]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     setLoading(true);
     try {
         await supabase.auth.signOut();
@@ -205,7 +268,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.clear();
         setLoading(false);
     }
-  };
+  }, [selectClient]);
 
   const value = useMemo(() => ({
     session,
@@ -217,7 +280,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     selectClient,
     clearClientData,
     signOut,
-  }), [session, user, profile, loading, availableClients, selectedClient]);
+  }), [session, user, profile, loading, availableClients, selectedClient, selectClient, clearClientData, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

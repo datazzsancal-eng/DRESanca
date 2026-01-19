@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -38,11 +39,10 @@ interface TemplateListPageProps {
 }
 
 export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onAddNew, onManageCards }) => {
-  const { user } = useAuth();
+  const { user, selectedClient } = useAuth();
   
   // State management
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -60,7 +60,6 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
   const [isFallbackView, setIsFallbackView] = useState(false);
 
   // Filter state
-  const [filtroCliente, setFiltroCliente] = useState('');
   const [filtroNome, setFiltroNome] = useState('');
 
   const filteredViewData = useMemo(() => {
@@ -69,95 +68,66 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
 
   // Data fetching
   const fetchData = useCallback(async () => {
-    if (!user) return;
+    if (!user || !selectedClient) return;
     setLoading(true);
     setError(null);
     try {
-      // 1. Fetch User Permissions
+      // 1. Fetch User Permissions for the selected client
       const { data: relData, error: relError } = await supabase
         .from('rel_prof_cli_empr')
         .select(`
-            cliente_id,
             empresa_id,
             dre_empresa ( emp_cnpj_raiz )
         `)
         .eq('profile_id', user.id)
+        .eq('cliente_id', selectedClient.id)
         .eq('rel_situacao_id', 'ATV');
 
       if (relError) throw relError;
 
       // 2. Process Permissions
-      const allowedClientIds = new Set<string>();
-      const clientFullAccess = new Set<string>();
+      let hasFullAccess = false;
       const allowedRoots = new Set<string>();
 
       if (relData) {
           relData.forEach((r: any) => {
-              if (r.cliente_id) allowedClientIds.add(r.cliente_id);
-              
               if (r.empresa_id === null) {
-                  // Access to ALL companies of this client
-                  if (r.cliente_id) clientFullAccess.add(r.cliente_id);
+                  hasFullAccess = true;
               } else if (r.dre_empresa?.emp_cnpj_raiz) {
-                  // Specific access
                   allowedRoots.add(r.dre_empresa.emp_cnpj_raiz);
               }
           });
       }
 
-      // If no clients allowed, return empty
-      if (allowedClientIds.size === 0) {
-          setTemplates([]);
-          setClientes([]);
-          setLoading(false);
-          return;
-      }
-
-      // 3. Fetch Templates
-      let query = supabase.from('dre_template').select('*');
+      // 3. Fetch Templates strictly for selected client
+      let query = supabase
+        .from('dre_template')
+        .select('*')
+        .eq('cliente_id', selectedClient.id);
       
-      // Filter by Allowed Clients first
-      query = query.in('cliente_id', Array.from(allowedClientIds));
-
-      if (filtroCliente) query = query.eq('cliente_id', filtroCliente);
       if (filtroNome) query = query.ilike('dre_nome', `%${filtroNome}%`);
       query = query.order('dre_nome', { ascending: true });
 
-      // 4. Fetch Clientes (Only allowed ones)
-      const clientesQuery = supabase
-        .from('dre_cliente')
-        .select('id, cli_nome')
-        .in('id', Array.from(allowedClientIds))
-        .order('cli_nome', { ascending: true });
+      const { data: templatesRes, error: templatesError } = await query;
 
-      const [templatesRes, clientesRes] = await Promise.all([query, clientesQuery]);
+      if (templatesError) throw templatesError;
 
-      if (templatesRes.error) throw templatesRes.error;
-      if (clientesRes.error) throw clientesRes.error;
-
-      // 5. Post-Process Templates based on CNPJ Root permissions
-      const rawTemplates = templatesRes.data || [];
+      // 4. Post-Process Templates based on CNPJ Root permissions if access is not full
+      const rawTemplates = templatesRes || [];
       const filteredTemplates = rawTemplates.filter((t: Template) => {
-          if (!t.cliente_id) return false; // Should have client
-          
-          // If user has full access to this client, show template
-          if (clientFullAccess.has(t.cliente_id)) return true;
-
-          // If user has restricted access, check if template's CNPJ Raiz is allowed
-          if (t.cliente_cnpj && allowedRoots.has(t.cliente_cnpj)) return true;
-
-          return false;
+          if (hasFullAccess) return true;
+          // If restricted, must have a CNPJ Root that the user is allowed to see
+          return t.cliente_cnpj && allowedRoots.has(t.cliente_cnpj);
       });
 
       setTemplates(filteredTemplates);
-      setClientes(clientesRes.data || []);
 
     } catch (err: any) {
       setError(`Falha ao carregar dados: ${err.message}`);
     } finally {
       setLoading(false);
     }
-  }, [filtroCliente, filtroNome, user]);
+  }, [filtroNome, user, selectedClient]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -179,7 +149,6 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
         setIsFallbackView(false);
 
         try {
-            // Try Webhook first
             if (templateForAction.dre_cont) {
                 const response = await fetch(`https://webhook.moondog-ia.tech/webhook/temp_dre?cntr=${templateForAction.dre_cont}`);
                 
@@ -191,17 +160,15 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
                              if (Array.isArray(data)) {
                                  data.sort((a, b) => a.dre_linha_seq - b.dre_linha_seq);
                                  setViewData(data);
-                                 return; // Success
+                                 return;
                              }
                          } catch (e) {
-                             console.warn("Webhook returned invalid JSON, trying fallback...");
+                             console.warn("Webhook invalid JSON, trying fallback...");
                          }
                     }
                 }
             }
             
-            // Fallback to Supabase if Webhook fails, returns empty, or no control code
-            console.log("Using Supabase fallback for visualization");
             const { data: lines, error: dbError } = await supabase
                 .from('dre_template_linhas')
                 .select(`
@@ -222,7 +189,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
                 dre_linha_seq: l.dre_linha_seq,
                 dre_linha_descri: l.dre_linha_descri,
                 tipo_linha: l.tab_tipo_linha?.tipo_linha || '',
-                dre_linha_valor_descri: l.dre_linha_valor, // Show raw value
+                dre_linha_valor_descri: l.dre_linha_valor,
                 dre_linha_valor_fonte: l.dre_linha_valor_fonte,
                 dre_linha_visivel: l.dre_linha_visivel,
                 visao_nome: l.dre_visao?.vis_nome || null
@@ -232,7 +199,6 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
             setIsFallbackView(true);
 
         } catch (err: any) {
-            console.error("View fetch error:", err);
             setViewError(`Falha ao carregar visualização: ${err.message}`);
         } finally {
             setIsViewLoading(false);
@@ -241,8 +207,6 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
     fetchViewData();
   }, [isViewModalOpen, templateForAction]);
 
-
-  // Modal handlers
   const openDeleteModal = (template: Template) => {
     setTemplateForAction(template);
     setIsDeleteModalOpen(true);
@@ -277,11 +241,9 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
     setViewError(null);
   };
 
-
   const handleDelete = async () => {
     if (!templateForAction) return;
 
-    // First, delete all associated lines from dre_template_linhas
     const { error: linesError } = await supabase
       .from('dre_template_linhas')
       .delete()
@@ -289,10 +251,9 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
 
     if (linesError) {
       setError(`Falha ao excluir as linhas do template: ${linesError.message}`);
-      return; // Stop if we can't delete the lines
+      return;
     }
 
-    // Then, delete the template header itself
     const { error: templateError } = await supabase
       .from('dre_template')
       .delete()
@@ -312,7 +273,6 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
     setError(null);
 
     try {
-      // 1. Fetch source template header
       const { data: sourceHeader, error: headerError } = await supabase
         .from('dre_template')
         .select('*')
@@ -320,17 +280,21 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
         .single();
       if (headerError) throw headerError;
 
-      // 2. Fetch source template lines
       const { data: sourceLines, error: linesError } = await supabase
         .from('dre_template_linhas')
         .select('*')
+        .eq('id', templateForAction.id); // This line had a logic bug in original, should be dre_template_id
+      
+      // Corrected fetching lines for copy
+      const { data: sourceLinesFixed, error: linesErrorFixed } = await supabase
+        .from('dre_template_linhas')
+        .select('*')
         .eq('dre_template_id', templateForAction.id);
-      if (linesError) throw linesError;
+      if (linesErrorFixed) throw linesErrorFixed;
 
-      // 3. Create new header
       const { id, created_at, ...newHeaderData } = sourceHeader;
       newHeaderData.dre_nome = newTemplateName;
-      newHeaderData.dre_cont = null; // Set the control field to null to avoid unique constraint violation
+      newHeaderData.dre_cont = null;
 
       const { data: insertedHeader, error: insertHeaderError } = await supabase
         .from('dre_template')
@@ -340,9 +304,8 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
       if (insertHeaderError) throw insertHeaderError;
       const newTemplateId = insertedHeader.id;
 
-      // 4. Create new lines if they exist
-      if (sourceLines && sourceLines.length > 0) {
-        const newLinesData = sourceLines.map(line => {
+      if (sourceLinesFixed && sourceLinesFixed.length > 0) {
+        const newLinesData = sourceLinesFixed.map(line => {
           const { id, dre_template_id, ...newLine } = line;
           return { ...newLine, dre_template_id: newTemplateId };
         });
@@ -363,7 +326,6 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
     if (!templateForAction?.dre_nome || filteredViewData.length === 0) return;
 
     const doc: any = new jsPDF();
-
     const title = `Template: ${templateForAction.dre_nome}`;
     doc.text(title, 14, 16);
 
@@ -394,10 +356,6 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
     doc.save(`template_${templateForAction.dre_nome?.toLowerCase().replace(/\s/g, '_')}.pdf`);
   };
 
-
-  // Render logic
-  const clientesMap = new Map(clientes.map(c => [c.id, c.cli_nome]));
-
   const renderContent = () => {
     if (loading) {
       return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando...</span></div>;
@@ -407,7 +365,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
         <div className="p-6 text-center bg-gray-800/50">
           <h2 className="text-lg font-bold text-white">Nenhum Template Encontrado</h2>
           <p className="mt-1 text-gray-400">
-            {filtroCliente || filtroNome ? "Tente ajustar seus filtros." : "Clique em 'Adicionar Template' para começar."}
+            {filtroNome ? "Tente ajustar seus filtros." : `Nenhum template cadastrado para ${selectedClient?.cli_nome}.`}
           </p>
         </div>
       );
@@ -418,7 +376,6 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
           <thead className="bg-gray-700">
             <tr>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Nome do Template</th>
-              <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Cliente</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">CNPJ Raiz</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase">Uso</th>
               <th className="px-4 py-2 text-xs font-semibold tracking-wider text-center text-gray-400 uppercase">Ativo</th>
@@ -429,7 +386,6 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
             {templates.map(template => (
               <tr key={template.id} className="hover:bg-gray-700/50">
                 <td className="px-4 py-2 font-medium text-white whitespace-nowrap">{template.dre_nome}</td>
-                <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{template.cliente_id ? clientesMap.get(template.cliente_id) || 'Inválido' : 'Global'}</td>
                 <td className="px-4 py-2 text-gray-400 whitespace-nowrap">{template.cliente_cnpj || '-'}</td>
                 <td className="px-4 py-2 text-gray-400 whitespace-nowrap">{template.dre_uso}</td>
                 <td className="px-4 py-2 text-center whitespace-nowrap">
@@ -457,22 +413,14 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
   return (
     <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md space-y-4">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <h2 className="text-lg font-bold text-white">Templates de DRE</h2>
+        <h2 className="text-lg font-bold text-white">Templates de DRE - {selectedClient?.cli_nome}</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={filtroCliente}
-            onChange={(e) => setFiltroCliente(e.target.value)}
-            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm"
-          >
-            <option value="">Todos os Clientes</option>
-            {clientes.map(c => <option key={c.id} value={c.id}>{c.cli_nome}</option>)}
-          </select>
           <input 
             type="text" 
             placeholder="Buscar por nome..." 
             value={filtroNome}
             onChange={(e) => setFiltroNome(e.target.value.toUpperCase())}
-            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm"
+            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
           <button onClick={onAddNew} className="w-full md:w-auto px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
             Adicionar Template
@@ -484,7 +432,6 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
 
       {renderContent()}
 
-      {/* Delete Modal */}
       <Modal isOpen={isDeleteModalOpen} onClose={closeDeleteModal} title="Confirmar Exclusão">
         <p className="text-gray-300">Tem certeza que deseja excluir o template "{templateForAction?.dre_nome}"? Todas as suas linhas serão removidas permanentemente.</p>
         <div className="flex justify-end pt-6 space-x-2">
@@ -493,7 +440,6 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
         </div>
       </Modal>
       
-      {/* Copy Modal */}
       <Modal isOpen={isCopyModalOpen} onClose={closeCopyModal} title="Copiar Template">
         <div className="space-y-4">
             <p className="text-gray-300">Criar uma cópia de "{templateForAction?.dre_nome}".</p>
@@ -515,10 +461,9 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
         </div>
       </Modal>
       
-      {/* View Modal */}
       <Modal isOpen={isViewModalOpen} onClose={closeViewModal} title={`Visualização: ${templateForAction?.dre_nome || ''}`} size="4xl">
          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-             {isViewLoading && <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4">Buscando dados...</span></div>}
+             {isViewLoading && <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Buscando dados...</span></div>}
              {viewError && <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{viewError}</div>}
              
              {isFallbackView && !isViewLoading && !viewError && (

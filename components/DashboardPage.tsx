@@ -15,6 +15,8 @@ import TipoVisaoPage from './tipo-visao/TipoVisaoPage';
 import VisaoPage from './visao/VisaoPage';
 import UsuarioPage from './usuario/UsuarioPage';
 import * as XLSX from 'xlsx';
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
 
 // Type definitions
 interface Periodo {
@@ -908,6 +910,58 @@ const DashboardPage: React.FC = () => {
      XLSX.writeFile(wb, fileName);
   };
 
+  const handleExportPdf = () => {
+    if (dreData.length === 0) return;
+
+    const doc = new jsPDF('landscape');
+    const fileName = getExportFileName('pdf');
+    const visao = visoes.find(v => v.id === selectedVisao);
+    const periodo = periods.find(p => p.retorno === selectedPeriod);
+
+    const title = `DRE: ${visao?.vis_nome || 'Consolidado'}`;
+    const subtitle = `Período: ${periodo?.display || selectedPeriod}`;
+
+    doc.setFontSize(16);
+    doc.text(title, 14, 15);
+    doc.setFontSize(11);
+    doc.text(subtitle, 14, 22);
+
+    const allMonths = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const currentMonthIndex = selectedPeriod ? (Number(selectedPeriod) % 100) : 12;
+    const visibleMonths = allMonths.slice(0, currentMonthIndex);
+
+    const headers = [["Descrição", ...visibleMonths, "Acumulado", "%"]];
+    const dataRows = dreData.map(row => {
+        const monthly = visibleMonths.map(m => (row[m.toLowerCase() as keyof DreDataRow] as number || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+        return [
+            row.desc,
+            ...monthly,
+            (row.accumulated || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            `${(row.percentage || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+        ];
+    });
+
+    (doc as any).autoTable({
+        head: headers,
+        body: dataRows,
+        startY: 30,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 1.5 },
+        headStyles: { fillColor: [31, 41, 55], textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [243, 244, 246] },
+        didParseCell: (data: any) => {
+            // Apply indentation to PDF if needed
+            if (data.section === 'body' && data.column.index === 0) {
+                const rowObj = dreData[data.row.index];
+                if (rowObj.isBold) data.cell.styles.fontStyle = 'bold';
+                if (rowObj.indentationLevel > 0) data.cell.styles.cellPadding = { left: 2 + (rowObj.indentationLevel * 3) };
+            }
+        }
+    });
+
+    doc.save(fileName);
+  };
+
   const processCardData = (posicao: number) => {
       const config = cardConfigs.find(c => c.crd_posicao === posicao);
       if (!config || !config.dre_linha_seq) {
@@ -1075,7 +1129,11 @@ const DashboardPage: React.FC = () => {
                             <option>Nenhuma visão</option>
                           )}
                         </select>
-                        <button className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <button 
+                            onClick={handleExportPdf}
+                            disabled={dreData.length === 0}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
                           <PdfIcon /> PDF
                         </button>
                         <button 

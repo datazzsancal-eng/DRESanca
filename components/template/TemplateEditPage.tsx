@@ -122,7 +122,8 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
   }, [viewData, showVisibleOnly]);
 
   const fetchData = useCallback(async () => {
-    if (!user || !selectedClient) return;
+    if (!user?.id || !selectedClient?.id) return;
+    
     setLoading(true);
     setError(null);
     try {
@@ -190,7 +191,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
     } finally {
       setLoading(false);
     }
-  }, [templateId, user, selectedClient]);
+  }, [templateId, user?.id, selectedClient?.id]); // FIX: Use IDs instead of objects
 
   useEffect(() => { fetchData(); }, [fetchData]);
   

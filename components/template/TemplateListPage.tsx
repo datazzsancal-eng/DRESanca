@@ -67,8 +67,10 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
   }, [viewData]);
 
   // Data fetching
+  // FIX: Depend on IDs (primitives) instead of objects to prevent infinite loops on tab switch/refocus
   const fetchData = useCallback(async () => {
-    if (!user || !selectedClient) return;
+    if (!user?.id || !selectedClient?.id) return;
+    
     setLoading(true);
     setError(null);
     try {
@@ -127,7 +129,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
     } finally {
       setLoading(false);
     }
-  }, [filtroNome, user, selectedClient]);
+  }, [filtroNome, user?.id, selectedClient?.id]); // Dependencies updated to primitives
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -283,7 +285,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
       const { data: sourceLines, error: linesError } = await supabase
         .from('dre_template_linhas')
         .select('*')
-        .eq('id', templateForAction.id); // This line had a logic bug in original, should be dre_template_id
+        .eq('dre_template_id', templateForAction.id); // This line had a logic bug in original, should be dre_template_id
       
       // Corrected fetching lines for copy
       const { data: sourceLinesFixed, error: linesErrorFixed } = await supabase

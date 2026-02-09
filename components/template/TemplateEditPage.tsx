@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
@@ -157,8 +156,8 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
       }
       
       setUserPermissions({ allowedRoots, clientFullAccess });
-      setTiposLinha(tiposRes.data);
-      setEstilosLinha(estilosRes.data);
+      setTiposLinha(tiposRes.data || []);
+      setEstilosLinha(estilosRes.data || []);
 
       // 2. Fetch specific template if not new
       if (templateId !== 'new') {
@@ -496,9 +495,9 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
 
       if (fetchLinesError) throw fetchLinesError;
 
-      const existingIds = new Set(existingLines?.map(l => l.id));
-      const incomingIds = new Set(linhasData.map(l => l.id).filter(id => id !== undefined));
-      const idsToDelete = [...existingIds].filter(id => !incomingIds.has(id));
+      const existingIds = new Set((existingLines || []).map((l: any) => l.id));
+      const incomingIds = new Set(linhasData.map(l => l.id).filter((id): id is string | number => id !== undefined));
+      const idsToDelete = [...existingIds].filter(id => !incomingIds.has(id as string | number));
 
       if (idsToDelete.length > 0) {
          const { error: deleteError } = await supabase.from('dre_template_linhas').delete().in('id', idsToDelete);
@@ -657,7 +656,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                     <td className="px-1 py-1">
                       <select value={linha.tipo_linha_id || ''} onChange={(e) => handleLinhaChange(index, 'tipo_linha_id', parseInt(e.target.value, 10))} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md">
                         <option value="" disabled>Selecione</option>
-                        {tiposLinha.map(t => <option key={t.id} value={t.id}>{t.tipo_linha}</option>)}
+                        {tiposLinha.map((t: TipoLinha) => <option key={t.id} value={t.id}>{t.tipo_linha}</option>)}
                       </select>
                     </td>
                     <td className="px-1 py-1">
@@ -670,7 +669,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                       ) : (
                         <select value={linha.estilo_linha_id || ''} onChange={(e) => handleLinhaChange(index, 'estilo_linha_id', parseInt(e.target.value, 10))} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md">
                             <option value="">Nenhum</option>
-                            {estilosLinha.map(e => <option key={e.id} value={e.id}>{e.estilo_nome}</option>)}
+                            {estilosLinha.map((e: EstiloLinha) => <option key={e.id} value={e.id}>{e.estilo_nome}</option>)}
                         </select>
                       )}
                     </td>
@@ -725,42 +724,62 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                 </div>
                 {isViewLoading && <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div></div>}
                 {viewError && <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{viewError}</div>}
+                {isFallbackView && !isViewLoading && !viewError && (
+                 <div className="p-3 mb-4 text-sm text-yellow-300 bg-yellow-900/30 border border-yellow-700 rounded-md">
+                     A visualização processada não está disponível. Exibindo estrutura bruta do banco de dados.
+                 </div>
+                )}
                 {!isViewLoading && !viewError && filteredViewData.length > 0 && (
-                <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm divide-y divide-gray-700">
-                        <thead className="bg-gray-700">
-                            <tr>
-                                <th className="px-3 py-2 text-left text-gray-400">SEQ</th>
-                                <th className="px-3 py-2 text-left text-gray-400">Descrição</th>
-                                <th className="px-3 py-2 text-left text-gray-400">Tipo</th>
-                                <th className="px-3 py-2 text-left text-gray-400">Valor / Conta / Fórmula</th>
-                                <th className="px-3 py-2 text-left text-gray-400">Visão</th>
-                                <th className="px-3 py-2 text-center text-gray-400">Visível</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-gray-800 divide-y divide-gray-700">
-                            {filteredViewData.map(row => (
-                            <tr key={row.dre_linha_seq}>
-                                <td className="px-3 py-2 text-gray-400">{row.dre_linha_seq}</td>
-                                <td className="px-3 py-2 text-white">{row.dre_linha_descri}</td>
-                                <td className="px-3 py-2 text-gray-300">{row.tipo_linha}</td>
-                                <td className="px-3 py-2 text-gray-300">{row.dre_linha_valor_descri}</td>
-                                <td className="px-3 py-2 text-gray-300">{row.visao_nome || 'Todas'}</td>
-                                <td className="px-3 py-2 text-center">
-                                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${row.dre_linha_visivel === 'S' ? 'bg-green-800 text-green-300' : 'bg-red-800 text-red-300'}`}>{row.dre_linha_visivel === 'S' ? 'Sim' : 'Não'}</span>
-                                </td>
-                            </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                  <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm divide-y divide-gray-700">
+                          <thead className="bg-gray-700">
+                              <tr>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">SEQ</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Descrição</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Tipo</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Valor / Conta / Fórmula</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Visão</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Fonte</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Visível</th>
+                              </tr>
+                          </thead>
+                          <tbody className="bg-gray-800 divide-y divide-gray-700">
+                              {filteredViewData.map((row) => (
+                                  <tr key={row.dre_linha_seq}>
+                                      <td className="px-3 py-2 text-gray-400">{row.dre_linha_seq}</td>
+                                      <td className="px-3 py-2 text-white">{row.dre_linha_descri}</td>
+                                      <td className="px-3 py-2 text-gray-300">{row.tipo_linha}</td>
+                                      <td className="px-3 py-2 text-gray-300">{row.dre_linha_valor_descri}</td>
+                                      <td className="px-3 py-2 text-gray-300">{row.visao_nome || 'Todas'}</td>
+                                      <td className="px-3 py-2 text-gray-400">{row.dre_linha_valor_fonte || 'N/A'}</td>
+                                      <td className="px-3 py-2 text-gray-400">{row.dre_linha_visivel === 'S' ? 'Sim' : 'Não'}</td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+                )}
+                {!isViewLoading && !viewError && filteredViewData.length === 0 && (
+                    <div className="p-6 text-center bg-gray-800/50">
+                        <p className="text-gray-400">Nenhum dado retornado para este template.</p>
+                    </div>
                 )}
             </div>
             <div className="flex justify-end pt-4 mt-4 border-t border-gray-700 space-x-2">
-                <button type="button" onClick={handleExportPdf} className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700"><i className="fas fa-file-pdf mr-2"></i> Exportar PDF</button>
-                <button type="button" onClick={closeViewModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">Fechar</button>
+                <button 
+                    type="button" 
+                    onClick={handleExportPdf} 
+                    disabled={filteredViewData.length === 0 || isViewLoading}
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 disabled:bg-teal-800 disabled:cursor-not-allowed"
+                >
+                    <i className="fas fa-file-pdf mr-2"></i>
+                    Exportar PDF
+                </button>
+                <button type="button" onClick={closeViewModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">
+                    Fechar
+                </button>
             </div>
-        </Modal>
+      </Modal>
     </div>
   );
 };

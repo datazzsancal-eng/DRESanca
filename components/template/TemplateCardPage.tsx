@@ -16,7 +16,7 @@ interface TemplateCard {
   id?: number;
   dre_template_id: string;
   dre_template_linha_id: number | null;
-  dre_linha_seq: number | null; // Added field
+  dre_linha_seq: number | null;
   vlr_linha_01: 'ACUM' | 'PERC';
   vlr_linha_02: 'ACUM' | 'PERC';
   crd_posicao: number;
@@ -54,11 +54,8 @@ const TemplateCardPage: React.FC<TemplateCardPageProps> = ({ templateId, onBack 
       if (cardsRes.error) throw cardsRes.error;
       
       setTemplate(templateRes.data);
-      // FIX: Handle potential null data from Supabase
       setLinhas(linhasRes.data || []);
       
-      // Initialize cards for all 4 positions
-      // FIX: Explicitly type data from Supabase and handle null to fix type error
       const existingCardsData: TemplateCard[] = cardsRes.data || [];
       const existingCards = new Map(existingCardsData.map(c => [c.crd_posicao, c]));
       const initializedCards: TemplateCard[] = cardPositions.map(pos => {
@@ -95,26 +92,23 @@ const TemplateCardPage: React.FC<TemplateCardPageProps> = ({ templateId, onBack 
         const updatedCard = { ...newCards[cardIndex], [field]: value };
 
         if (field === 'dre_template_linha_id') {
-            const selectedLinhaId = value; // Value from onChange is already a number or null
+            const selectedLinhaId = value;
             if (selectedLinhaId) {
                 const selectedLinha = linhas.find(l => l.id === selectedLinhaId);
                 if (selectedLinha) {
                     updatedCard.dre_linha_seq = selectedLinha.dre_linha_seq;
                     updatedCard.tit_card_dre = selectedLinha.dre_linha_descri || '';
-                    // Pre-fill adjusted title only if it's currently empty
                     if (!updatedCard.tit_card_ajust) {
                         updatedCard.tit_card_ajust = selectedLinha.dre_linha_descri || '';
                     }
                 }
             } else {
-                // Clear fields when "-- Limpar Card --" is selected
                 updatedCard.dre_linha_seq = null;
                 updatedCard.tit_card_dre = '';
                 updatedCard.tit_card_ajust = '';
             }
         }
 
-        // Validation to prevent selecting the same value for both fields
         if (field === 'vlr_linha_01' && value === updatedCard.vlr_linha_02) {
             updatedCard.vlr_linha_02 = value === 'ACUM' ? 'PERC' : 'ACUM';
         }
@@ -131,18 +125,30 @@ const TemplateCardPage: React.FC<TemplateCardPageProps> = ({ templateId, onBack 
     setSaving(true);
     setError(null);
     try {
-        // 1. Delete all existing cards for this template
+        // 1. Filtrar cards válidos e montar payload LIMPO (apenas colunas da tabela)
+        // Isso evita enviar campos como 'created_at: null' que causam erro de restrição no Postgres
+        const cardsToInsert = cards
+            .filter(c => c.dre_template_linha_id !== null && Number(c.dre_template_linha_id) !== 0)
+            .map(c => ({
+                dre_template_id: templateId,
+                dre_template_linha_id: c.dre_template_linha_id,
+                dre_linha_seq: c.dre_linha_seq,
+                vlr_linha_01: c.vlr_linha_01,
+                vlr_linha_02: c.vlr_linha_02,
+                crd_posicao: c.crd_posicao,
+                tit_card_dre: c.tit_card_dre || '',
+                tit_card_ajust: c.tit_card_ajust || ''
+            }));
+
+        // 2. Primeiro removemos os existentes
         const { error: deleteError } = await supabase
             .from('dre_template_card')
             .delete()
             .eq('dre_template_id', templateId);
+            
         if (deleteError) throw deleteError;
 
-        // 2. Insert new configurations for cards that have a line selected
-        const cardsToInsert = cards
-            .filter(c => c.dre_template_linha_id !== null && c.dre_template_linha_id !== 0)
-            .map(({ id, ...rest }) => rest); // remove transient id if it exists
-        
+        // 3. Se houver cards para inserir, executamos a inserção
         if (cardsToInsert.length > 0) {
             const { error: insertError } = await supabase
                 .from('dre_template_card')
@@ -154,6 +160,8 @@ const TemplateCardPage: React.FC<TemplateCardPageProps> = ({ templateId, onBack 
 
     } catch (err: any) {
         setError(`Falha ao salvar configurações dos cards: ${err.message}`);
+        // Em caso de erro, tentamos recarregar para não deixar a UI em estado inconsistente
+        fetchData(); 
     } finally {
         setSaving(false);
     }
@@ -161,14 +169,15 @@ const TemplateCardPage: React.FC<TemplateCardPageProps> = ({ templateId, onBack 
 
 
   if (loading) return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando...</span></div>;
-  if (error) return <div className="p-4 text-center text-red-400 bg-red-900/20 border border-red-800 rounded-lg">{error}</div>;
-
+  
   return (
     <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-white">Gerenciar Cards do Dashboard</h2>
         <h3 className="text-lg font-medium text-gray-300">{template?.dre_nome}</h3>
       </div>
+
+      {error && <div className="p-4 mb-4 text-sm text-red-200 bg-red-900/50 border border-red-800 rounded-md">{error}</div>}
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {cardPositions.map(pos => {

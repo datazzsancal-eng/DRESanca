@@ -1,6 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-// import { supabase } from '../../lib/supabaseClient.ts';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth, ClientContext } from '../contexts/AuthContext';
 import ClientePage from './cliente/ClientePage';
@@ -15,64 +14,45 @@ import TipoVisaoPage from './tipo-visao/TipoVisaoPage';
 import VisaoPage from './visao/VisaoPage';
 import UsuarioPage from './usuario/UsuarioPage';
 import * as XLSX from 'xlsx';
-import { jsPDF } from "jspdf";
-import "jspdf-autotable";
 
 // Type definitions
-interface Periodo {
-  retorno: number;
-  display: string;
-}
-interface Visao {
-  id: string;
-  vis_nome: string;
-  vis_descri: string | null;
-  cliente_id?: string | null; 
-}
+interface Periodo { retorno: number; display: string; }
+interface Visao { id: string; vis_nome: string; vis_descri: string | null; cliente_id?: string | null; }
 interface DreDataRow {
-    seq: number; // dre_linha_seq
-    desc: string;
-    jan: number;
-    fev: number;
-    mar: number;
-    abr: number;
-    mai: number;
-    jun: number;
-    jul: number;
-    ago: number;
-    set: number;
-    out: number;
-    nov: number;
-    dez: number;
-    accumulated: number;
-    percentage: number;
-    // Styling properties
-    isBold: boolean;
-    isItalic: boolean;
-    indentationLevel: number;
+    seq: number; desc: string; jan: number; fev: number; mar: number; abr: number; mai: number; jun: number; jul: number; ago: number; set: number; out: number; nov: number; dez: number;
+    accumulated: number; percentage: number; isBold: boolean; isItalic: boolean; indentationLevel: number;
 }
+interface CardConfig { id: number; crd_posicao: number; tit_card_ajust: string | null; dre_linha_seq: number | null; vlr_linha_01: 'ACUM' | 'PERC'; vlr_linha_02: 'ACUM' | 'PERC'; }
+interface LineStyle { seq: number; tipografia: 'NORMAL' | 'NEGRITO' | 'ITALICO' | 'NEGR/ITAL' | null; indentacao: number; }
 
-interface CardConfig {
-    id: number;
-    crd_posicao: number;
-    tit_card_ajust: string | null;
-    dre_linha_seq: number | null;
-    vlr_linha_01: 'ACUM' | 'PERC';
-    vlr_linha_02: 'ACUM' | 'PERC';
-}
+const safeParseJson = (text: string): unknown => {
+  // Alguns webhooks retornam 200 com body vazio; isso quebra res.json() com "Unexpected end of JSON input"
+  if (!text || !text.trim()) return [];
+  return JSON.parse(text);
+};
 
-interface LineStyle {
-    seq: number;
-    tipografia: 'NORMAL' | 'NEGRITO' | 'ITALICO' | 'NEGR/ITAL' | null;
-    indentacao: number;
-}
+// --- Safe Formatting Helpers ---
+const safeToLocaleString = (val: any, options?: Intl.NumberFormatOptions): string => {
+    const n = Number(val);
+    if (val === null || val === undefined || isNaN(n)) return '0,00';
+    return n.toLocaleString('pt-BR', options);
+};
 
+const safeFormatNumber = (val: any): string => {
+    const n = Number(val);
+    if (val === null || val === undefined || isNaN(n) || n === 0) return '-';
+    return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 
-// Icons defined as stateless functional components
+const safeFormatPercentage = (val: any): string => {
+    const n = Number(val);
+    if (val === null || val === undefined || isNaN(n) || n === 0) return '-';
+    return `${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+};
+
+// Icons
 const Icon = ({ path, className = "h-6 w-6" }: { path: string, className?: string }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d={path} />
-  </svg>
+  <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d={path} /></svg>
 );
 const DashboardIcon = () => <Icon path="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />;
 const VisionIcon = () => <Icon path="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z M15 12a3 3 0 11-6 0 3 3 0 016 0z" />;
@@ -82,1133 +62,480 @@ const AdminIcon = () => <Icon path="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26
 const ChevronDownIcon = () => <Icon path="M19 9l-7 7-7-7" className="h-4 w-4" />;
 const ChevronUpIcon = () => <Icon path="M5 15l7-7 7 7" className="h-4 w-4" />;
 const LogoutIcon = () => <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />;
-const UserIcon = () => <Icon path="M16 7a4 4 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" className="h-8 w-8 text-gray-400"/>;
-const PdfIcon = () => <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className="h-5 w-5 mr-1" />;
-const CsvIcon = () => <Icon path="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className="h-5 w-5 mr-1" />;
 const XlsxIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" className="h-5 w-5 mr-1 text-green-500" />;
 const SwitchIcon = () => <Icon path="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" className="h-4 w-4" />;
-
 const MenuIcon = () => <Icon path="M4 6h16M4 12h16M4 18h16" />;
 const CloseIcon = () => <Icon path="M6 18L18 6M6 6l12 12" />;
 const ChevronDoubleLeftIcon = () => <Icon path="M11 17l-5-5 5-5M18 17l-5-5 5-5" className="h-5 w-5"/>;
 const ChevronDoubleRightIcon = () => <Icon path="M13 17l5-5-5-5M6 17l5-5-5-5" className="h-5 w-5"/>;
 
 const SancalLogo = () => (
-  <img 
-    src="https://www.sancal.com.br/wp-content/uploads/elementor/thumbs/logo-white-qfydekyggou3snwsfrlsc913ym97p1hveemqwoinls.png" 
-    alt="Sancal Logo" 
-    className="h-8 w-auto"
-  />
+  <img src="https://www.sancal.com.br/wp-content/uploads/elementor/thumbs/logo-white-qfydekyggou3snwsfrlsc913ym97p1hveemqwoinls.png" alt="Sancal Logo" className="h-8 w-auto"/>
 );
 
-// Sidebar data structure
-interface NavItem {
-  id: string;
-  label: string;
-  icon: React.FC;
-  children?: NavItem[];
-  isHeader?: boolean;
-}
-
-const navigationData: NavItem[] = [
+const navigationData: any[] = [
   { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
-  {
-    id: 'analise-modelos',
-    label: 'Análise & Modelos',
-    icon: VisionIcon,
-    children: [
-      { id: 'visao', label: 'Visões', icon: () => <></> },
-      { id: 'templates', label: 'Templates', icon: () => <></> },
-    ],
-  },
-  {
-    id: 'estrutura',
-    label: 'Estrutura',
-    icon: StructureIcon,
-    children: [
-      { id: 'cliente', label: 'Cliente', icon: () => <></> },
-      { id: 'grupo-empresarial', label: 'Grupo Empresarial', icon: () => <></> },
-      { id: 'empresa', label: 'Empresa', icon: () => <></> },
-      { id: 'plano-contabil', label: 'Plano Contábil', icon: () => <></> },
-    ],
-  },
-  {
-    id: 'configuracoes',
-    label: 'Configurações',
-    icon: SettingsIcon,
-    children: [
-      { id: 'tabelas-header', label: 'Tabelas', icon: () => <></>, isHeader: true },
-      { id: 'situacao', label: 'Situação', icon: () => <></> },
-      { id: 'tipo-linha', label: 'Tipo Linha DRE', icon: () => <></> },
-      { id: 'estilo-linha', label: 'Estilo Linha DRE', icon: () => <></> },
-      { id: 'tipo-visao', label: 'Tipo Visão DRE', icon: () => <></> },
-    ],
-  },
-  {
-    id: 'administracao',
-    label: 'Administração',
-    icon: AdminIcon,
-    children: [
-      { id: 'usuarios', label: 'Usuários', icon: () => <></> },
-      { id: 'permissoes', label: 'Permissões', icon: () => <></> },
-    ],
-  },
+  { id: 'analise-modelos', label: 'Análise & Modelos', icon: VisionIcon, children: [{ id: 'visao', label: 'Visões' }, { id: 'templates', label: 'Templates' }] },
+  { id: 'estrutura', label: 'Estrutura', icon: StructureIcon, children: [{ id: 'cliente', label: 'Cliente' }, { id: 'grupo-empresarial', label: 'Grupo Empresarial' }, { id: 'empresa', label: 'Empresa' }, { id: 'plano-contabil', label: 'Plano Contábil' }] },
+  { id: 'configuracoes', label: 'Configurações', icon: SettingsIcon, children: [{ id: 'situacao', label: 'Situação' }, { id: 'tipo-linha', label: 'Tipo Linha DRE' }, { id: 'estilo-linha', label: 'Estilo Linha DRE' }, { id: 'tipo-visao', label: 'Tipo Visão DRE' }] },
+  { id: 'administracao', label: 'Administração', icon: AdminIcon, children: [{ id: 'usuarios', label: 'Usuários' }] },
 ];
 
-
-// Sidebar component
 interface SidebarProps {
-  isSidebarOpen: boolean;
-  setIsSidebarOpen: (isOpen: boolean) => void;
-  activePage: string;
-  setActivePage: (page: string) => void;
-  isCollapsed: boolean;
-  onToggleCollapse: () => void;
-  selectedClient: ClientContext | null;
-  onChangeClient: () => void;
+  isSidebarOpen: boolean; setIsSidebarOpen: (isOpen: boolean) => void; activePage: string; setActivePage: (page: string) => void; isCollapsed: boolean; onToggleCollapse: () => void; selectedClient: ClientContext | null; onChangeClient: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, activePage, setActivePage, isCollapsed, onToggleCollapse, selectedClient, onChangeClient }) => {
-  const [openMenus, setOpenMenus] = useState<{ [key: string]: boolean }>({
-    'analise-modelos': true,
-    estrutura: true,
-    configuracoes: false,
-    administracao: false,
-  });
-  
-  useEffect(() => {
-    if (isCollapsed) {
-      setOpenMenus({});
-    }
-  }, [isCollapsed]);
-
-
-  const toggleMenu = (id: string) => {
-    setOpenMenus(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const getNavItemClasses = (page: string) => 
-    `flex items-center w-full py-2.5 text-sm font-medium text-left rounded-lg transition-colors duration-200 ${isCollapsed ? 'px-2 justify-center' : 'px-4'} ${
-      activePage === page 
-      ? 'bg-gray-900 text-white' 
-      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-    }`;
-  
-  const getSubNavItemClasses = (page: string) => 
-  `flex items-center w-full py-2 pl-11 pr-4 text-sm font-medium text-left text-gray-400 rounded-lg hover:bg-gray-700 hover:text-white transition-colors duration-200 ${
-    activePage === page ? 'bg-gray-700 !text-white' : ''
-  }`;
+  const [openMenus, setOpenMenus] = useState<{ [key: string]: boolean }>({ 'analise-modelos': true, estrutura: true });
+  useEffect(() => { if (isCollapsed) setOpenMenus({}); }, [isCollapsed]);
+  const toggleMenu = (id: string) =>
+    setOpenMenus((prev: { [key: string]: boolean }) => ({ ...prev, [id]: !prev[id] }));
+  const getNavItemClasses = (p: string) => `flex items-center w-full py-2.5 text-sm font-medium rounded-lg transition-colors ${isCollapsed ? 'justify-center px-2' : 'px-4'} ${activePage === p ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700'}`;
 
   return (
     <>
-      <div className={`fixed inset-0 z-30 bg-black bg-opacity-50 transition-opacity lg:hidden ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-           onClick={() => setIsSidebarOpen(false)}>
-      </div>
-      <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-800 text-white transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:inset-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-64'}`}>
-        {/* Adjusted Height to h-16 (standard nav height) */}
-        <div className={`flex items-center h-16 px-4 border-b border-gray-700 shrink-0 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+      <div className={`fixed inset-0 z-30 bg-black bg-opacity-50 lg:hidden ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsSidebarOpen(false)}></div>
+      <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-800 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+        <div className={`flex items-center h-16 px-4 border-b border-gray-700 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
           {!isCollapsed ? <SancalLogo /> : <DashboardIcon />}
-          <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
-              <CloseIcon />
-          </button>
+          <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}><CloseIcon /></button>
         </div>
-        
         <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-          {navigationData.map((item) => {
-            if (item.children) {
-              const isOpen = openMenus[item.id] && !isCollapsed;
-              return (
-                <div key={item.id}>
-                  <button 
-                    onClick={() => !isCollapsed && toggleMenu(item.id)} 
-                    className={`${getNavItemClasses(item.id + '-parent')} w-full ${!isCollapsed ? 'justify-between' : 'justify-center'}`}
-                    title={isCollapsed ? item.label : ''}
-                  >
-                    <div className="flex items-center">
-                      <item.icon />
-                      {!isCollapsed && <span className="ml-3">{item.label}</span>}
-                    </div>
-                    {!isCollapsed && (isOpen ? <ChevronUpIcon /> : <ChevronDownIcon />)}
-                  </button>
-                  {isOpen && (
-                    <div className="py-1 pl-2 space-y-1">
-                      {item.children.map(child => {
-                         if (child.isHeader) {
-                            return (
-                                <div key={child.id} className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-500 uppercase">{child.label}</div>
-                            );
-                         }
-                         return (
-                            <button key={child.id} onClick={() => setActivePage(child.id)} className={getSubNavItemClasses(child.id)}>
-                                {child.label}
-                            </button>
-                         );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            }
-            return (
-              <button key={item.id} onClick={() => setActivePage(item.id)} className={getNavItemClasses(item.id)} title={isCollapsed ? item.label : ''}>
-                <item.icon />
-                {!isCollapsed && <span className="ml-3">{item.label}</span>}
+          {navigationData.map((item: any) => (
+            <div key={item.id}>
+              <button onClick={() => item.children ? (!isCollapsed && toggleMenu(item.id)) : setActivePage(item.id)} className={getNavItemClasses(item.id)} title={isCollapsed ? item.label : ''}>
+                <div className="flex items-center"><item.icon />{!isCollapsed && <span className="ml-3">{item.label}</span>}</div>
+                {!isCollapsed && item.children && (openMenus[item.id] ? <ChevronUpIcon /> : <ChevronDownIcon />)}
               </button>
-            );
-          })}
+              {!isCollapsed && item.children && openMenus[item.id] && (
+                <div className="py-1 pl-2 space-y-1">
+                  {item.children.map((child: any) => (
+                    <button key={child.id} onClick={() => setActivePage(child.id)} className={`flex items-center w-full py-2 pl-11 pr-4 text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors ${activePage === child.id ? 'bg-gray-700 text-white' : 'text-gray-400'}`}>{child.label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
         </nav>
-
-        <div className="p-2 border-t border-gray-700 shrink-0 flex flex-col gap-2">
-          {/* 1. Client Selection */}
+        <div className="p-2 border-t border-gray-700 flex flex-col gap-2">
           {!isCollapsed && selectedClient && (
             <div className="flex items-center justify-between p-2 bg-gray-700/50 rounded-lg border border-gray-600">
-                <div className="truncate flex-1">
-                    <p className="text-[10px] uppercase text-gray-400 font-bold tracking-wider">Cliente Atual</p>
-                    <p className="text-sm font-semibold text-white truncate" title={selectedClient.cli_nome || ''}>{selectedClient.cli_nome}</p>
-                </div>
-                <button onClick={onChangeClient} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-600 rounded-full transition-colors ml-2" title="Trocar Cliente">
-                    <SwitchIcon />
-                </button>
+                <div className="truncate flex-1"><p className="text-[10px] uppercase text-gray-400 font-bold">Cliente Atual</p><p className="text-sm font-semibold text-white truncate">{selectedClient.cli_nome}</p></div>
+                <button onClick={onChangeClient} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-600 rounded-full"><SwitchIcon /></button>
             </div>
           )}
-          {isCollapsed && (
-             <button onClick={onChangeClient} className="flex justify-center w-full p-2 text-gray-400 hover:text-white hover:bg-gray-600 rounded-lg transition-colors" title={`Cliente: ${selectedClient?.cli_nome || 'Nenhum'}`}>
-                <SwitchIcon />
-            </button>
-          )}
-
-           {/* 2. Collapse Button */}
-           <button
-            onClick={onToggleCollapse}
-            className={`hidden lg:flex items-center w-full p-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-gray-600 transition-colors duration-200 ${isCollapsed ? 'justify-center' : ''}`}
-            title={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
-          >
-            {isCollapsed ? <ChevronDoubleRightIcon /> : <ChevronDoubleLeftIcon />}
-            {!isCollapsed && <span className="ml-2">Recolher</span>}
-          </button>
-
-          {/* 3. Logo Synapiens (Bottom) */}
-          {!isCollapsed && (
-            <div className="flex justify-center pt-2 pb-1">
-                <img 
-                src="https://raw.githubusercontent.com/synapiens/uteis/refs/heads/main/LogoSynapiens/Synapiens_logo_hor.png" 
-                alt="Synapiens" 
-                className="h-8 w-auto opacity-70 hover:opacity-100 transition-opacity"
-                />
-            </div>
-          )}
+          {isCollapsed && <button onClick={onChangeClient} className="flex justify-center w-full p-2 text-gray-400 hover:bg-gray-600 rounded-lg"><SwitchIcon /></button>}
+           <button onClick={onToggleCollapse} className={`hidden lg:flex items-center w-full p-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-gray-600 ${isCollapsed ? 'justify-center' : ''}`}>{isCollapsed ? <ChevronDoubleRightIcon /> : <ChevronDoubleLeftIcon />}{!isCollapsed && <span className="ml-2">Recolher</span>}</button>
         </div>
       </aside>
     </>
   );
 };
 
-// StatCard component
-interface StatCardProps {
-  title: string;
-  subtitle: string;
-  value: string;
-  percentage: string;
-  variation: number;
-}
+interface StatCardProps { title: string; subtitle: string; value: string; percentage: string; variation: number; }
 const StatCard: React.FC<StatCardProps> = ({ title, subtitle, value, percentage, variation }) => {
-  const isPositive = variation >= 0;
-  const variationColor = isPositive ? 'text-green-500' : 'text-red-500';
-
+  const isPositive = (Number(variation) || 0) >= 0;
   return (
-    <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-gray-400 truncate" title={title}>{title}</p>
-      </div>
+    <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md min-h-[120px] flex flex-col justify-between">
+      <p className="text-sm font-medium text-gray-400 truncate" title={title}>{title}</p>
       <div className="mt-2">
         <h3 className="text-2xl font-bold text-white truncate">{value}</h3>
         <p className="text-sm text-gray-400 truncate">{percentage}</p>
       </div>
-      <div className={`text-xs font-semibold text-right mt-2 ${variationColor}`}>
-        {isPositive ? '▲' : '▼'} {Math.abs(variation).toFixed(2)}%
+      <div className={`text-xs font-semibold text-right mt-2 ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+        {isPositive ? '▲' : '▼'} {Math.abs(Number(variation) || 0).toFixed(2)}%
         <span className="text-gray-500 ml-1 font-normal">{subtitle}</span>
       </div>
     </div>
   );
 };
 
-// DreTable Component
-interface DreTableProps {
-    data: DreDataRow[];
-    selectedPeriod: number | '';
-}
+interface DreTableProps { data: DreDataRow[]; selectedPeriod: number | ''; }
 const DreTable: React.FC<DreTableProps> = ({ data, selectedPeriod }) => {
     const allMonths = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    
-    // Determine valid months based on selectedPeriod (YYYYMM)
-    const currentMonthIndex = selectedPeriod ? (Number(selectedPeriod) % 100) : 12;
-    const visibleMonths = allMonths.slice(0, currentMonthIndex);
-
-    const formatNumber = (value: number) => {
-        if (value === 0) return '-';
-        return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    };
-
-    const formatPercentage = (value: number) => {
-        if (value === 0) return '-';
-        return `${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
-    };
+    const visibleMonths = allMonths.slice(0, selectedPeriod ? (Number(selectedPeriod) % 100) : 12);
 
     return (
         <div className="overflow-auto bg-gray-800 border border-gray-700 rounded-lg shadow-md max-h-[70vh]">
             <table className="min-w-full text-sm divide-y divide-gray-700 border-separate border-spacing-0">
                 <thead className="bg-gray-700">
                     <tr>
-                        <th className="sticky left-0 top-0 z-20 bg-gray-700 px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400 uppercase shadow-[1px_0_0_0_rgba(75,85,99,1)]">Descrição</th>
-                        {visibleMonths.map(month => (
-                            <th key={month} className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">{month}</th>
+                        <th className="sticky left-0 top-0 z-20 bg-gray-700 px-3 py-2 text-xs font-semibold text-left text-gray-400 uppercase shadow-[1px_0_0_0_rgba(75,85,99,1)]">Descrição</th>
+                        {visibleMonths.map((m: string) => (
+                          <th
+                            key={m}
+                            className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold text-right text-gray-400 uppercase"
+                          >
+                            {m}
+                          </th>
                         ))}
-                        <th className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">Acumulado</th>
-                        <th className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold tracking-wider text-right text-gray-400 uppercase">%</th>
+                        <th className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold text-right text-gray-400 uppercase">Acumulado</th>
+                        <th className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold text-right text-gray-400 uppercase">%</th>
                     </tr>
                 </thead>
                 <tbody className="bg-gray-800 divide-y divide-gray-700">
-                    {data.map((row, index) => {
-                        const accumulated = row.accumulated || 0;
-                        const percentage = row.percentage || 0;
-                        
-                        // Dynamic Styles
-                        const fontWeight = row.isBold ? 'bold' : 'normal';
-                        const fontStyle = row.isItalic ? 'italic' : 'normal';
-                        // Adjust padding: 
-                        // Using 'ch' unit which is approximately the width of the '0' character.
-                        // We add the base padding (0.75rem ~ px-3) to the indentation level.
-                        const paddingLeft = `calc(0.75rem + ${(row.indentationLevel || 0)}ch)`;
-
-                        return (
-                            <tr key={index} className="group hover:bg-gray-700/50">
-                                <td 
-                                    className="sticky left-0 z-10 bg-gray-800 group-hover:bg-gray-700 px-3 py-2 whitespace-nowrap text-gray-300 shadow-[1px_0_0_0_rgba(55,65,81,1)]"
-                                    style={{ 
-                                        fontWeight, 
-                                        fontStyle, 
-                                        paddingLeft 
-                                    }}
-                                >
-                                    {row.desc}
-                                </td>
-                                {visibleMonths.map((month) => {
-                                    const val = row[month.toLowerCase() as keyof DreDataRow] as number || 0;
-                                    return (
-                                        <td key={month} className={`px-3 py-2 text-right whitespace-nowrap ${val < 0 ? 'text-red-500' : 'text-gray-200'}`}>
-                                            {formatNumber(val)}
-                                        </td>
-                                    );
-                                })}
-                                <td className={`px-3 py-2 text-right whitespace-nowrap font-medium ${accumulated < 0 ? 'text-red-500' : 'text-white'}`}>{formatNumber(accumulated)}</td>
-                                <td className={`px-3 py-2 text-right whitespace-nowrap font-medium text-gray-400`}>{formatPercentage(percentage)}</td>
-                            </tr>
-                        );
-                    })}
+                    {data.map((row: DreDataRow, idx: number) => (
+                        <tr key={idx} className="group hover:bg-gray-700/50">
+                            <td className="sticky left-0 z-10 bg-gray-800 group-hover:bg-gray-700 px-3 py-2 whitespace-nowrap text-gray-300 shadow-[1px_0_0_0_rgba(55,65,81,1)]" style={{ fontWeight: row.isBold ? 'bold' : 'normal', fontStyle: row.isItalic ? 'italic' : 'normal', paddingLeft: `calc(0.75rem + ${row.indentationLevel}ch)` }}>{row.desc}</td>
+                            {visibleMonths.map((m: string) => (
+                              <td
+                                key={m}
+                                className={`px-3 py-2 text-right whitespace-nowrap ${
+                                  (row[m.toLowerCase() as keyof DreDataRow] as number) < 0
+                                    ? 'text-red-500'
+                                    : 'text-gray-200'
+                                }`}
+                              >
+                                {safeFormatNumber(row[m.toLowerCase() as keyof DreDataRow])}
+                              </td>
+                            ))}
+                            <td className={`px-3 py-2 text-right whitespace-nowrap font-medium ${row.accumulated < 0 ? 'text-red-500' : 'text-white'}`}>{safeFormatNumber(row.accumulated)}</td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap font-medium text-gray-400">{safeFormatPercentage(row.percentage)}</td>
+                        </tr>
+                    ))}
                 </tbody>
             </table>
         </div>
     );
 };
 
-
-// Main DashboardPage component
-// Removed onLogout from props as we use useAuth now
 const DashboardPage: React.FC = () => {
   const { signOut, user, profile, selectedClient, selectClient } = useAuth();
-  
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState('dashboard');
-  
-  const [rawDreData, setRawDreData] = useState<any[]>([]); // Data from Webhook
-  const [dreData, setDreData] = useState<DreDataRow[]>([]); // Formatted data for table
-  
+  const [dropdownsInitialized, setDropdownsInitialized] = useState(false);
+  const [rawDreData, setRawDreData] = useState<any[]>([]);
+  const [dreData, setDreData] = useState<DreDataRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
-  
-  // State for periods dropdown
   const [periods, setPeriods] = useState<Periodo[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<number | ''>('');
-  const [periodsLoading, setPeriodsLoading] = useState(true);
-
-  // State for visoes dropdown
   const [visoes, setVisoes] = useState<Visao[]>([]);
   const [selectedVisao, setSelectedVisao] = useState<string>('');
-  const [visoesLoading, setVisoesLoading] = useState(true);
-
-  // State for dynamic cards and styles
   const [cardConfigs, setCardConfigs] = useState<CardConfig[]>([]);
   const [lineStyles, setLineStyles] = useState<Map<number, LineStyle>>(new Map());
+  const dreCacheRef = useRef<Record<string, any[]>>({});
 
-  // Fetch dropdown data on mount
+  // Dropdowns (Períodos e Visões) – regras otimizadas
   useEffect(() => {
-    const fetchDropdownData = async () => {
-      if (!user || !selectedClient) return;
-
-      let currentWarnings: string[] = [];
-
-      // Fetch periods from Supabase view
-      setPeriodsLoading(true);
+    const fetchDropdowns = async () => {
+      if (!user?.id || !selectedClient?.id) return;
       try {
-        const { data, error: periodError } = await supabase
+        // Se já inicializado e só o activePage mudou, não recarrega tudo
+        if (dropdownsInitialized && periods.length && visoes.length) return;
+
+        const { data: pData } = await supabase
           .from('viw_periodo_calc')
           .select('retorno, display')
           .order('retorno', { ascending: false });
-        if (periodError) throw periodError;
-        if (data && data.length > 0) {
-          setPeriods(data);
-          setSelectedPeriod(Number(data[0].retorno));
-        } else {
-            currentWarnings.push('Nenhum período foi encontrado.');
+
+        if (pData?.length) {
+          setPeriods(pData);
+          setSelectedPeriod((prev: number | '') => (prev === '' ? Number(pData[0].retorno) : prev));
         }
-      } catch (err: any) {
-        const errorMessage = err.message || 'Verifique a conexão ou as permissões da view.';
-        console.error("Failed to fetch periods:", err);
-        currentWarnings.push(`Atenção: Não foi possível carregar os períodos (${errorMessage}).`);
-      } finally {
-        setPeriodsLoading(false);
-      }
-      
-      // Fetch visoes from Supabase table with Permissions Check
-      setVisoesLoading(true);
-      try {
-          // 1. Fetch User Permissions specifically for the Selected Client
-          const { data: relData, error: relError } = await supabase
-            .from('rel_prof_cli_empr')
-            .select('empresa_id')
-            .eq('profile_id', user.id)
-            .eq('cliente_id', selectedClient.id) // Filter permissions by selected client
-            .eq('rel_situacao_id', 'ATV');
 
-          if (relError) throw relError;
+        const { data: relData } = await supabase
+          .from('rel_prof_cli_empr')
+          .select('empresa_id')
+          .eq('profile_id', user.id)
+          .eq('cliente_id', selectedClient.id)
+          .eq('rel_situacao_id', 'ATV');
 
-          let hasFullAccess = false;
-          const allowedCompanyIds = new Set<string>();
+        const hasFull = relData?.some((r: any) => r.empresa_id === null);
+        const allowedIds = new Set(
+          relData?.map((r: any) => r.empresa_id).filter(Boolean)
+        );
 
-          if (relData) {
-              relData.forEach((r: any) => {
-                  if (r.empresa_id === null) {
-                      hasFullAccess = true;
-                  } else {
-                      allowedCompanyIds.add(r.empresa_id);
-                  }
-              });
-          }
+        const { data: vData } = await supabase
+          .from('dre_visao')
+          .select(`id, vis_nome, cliente_id, rel_visao_empresa ( empresa_id )`)
+          .eq('cliente_id', selectedClient.id)
+          .order('vis_nome');
 
-          // 2. Fetch Visions for the Selected Client, including companies for filtering
-          const { data: visoesData, error: visaoError } = await supabase
-            .from('dre_visao')
-            .select(`
-                id, vis_nome, vis_descri, cliente_id,
-                rel_visao_empresa ( empresa_id )
-            `)
-            .eq('cliente_id', selectedClient.id)
-            .order('vis_nome');
+        const filtered = (vData || []).filter((v: any) =>
+          hasFull ||
+          !v.rel_visao_empresa?.length ||
+          v.rel_visao_empresa.every((r: any) => allowedIds.has(r.empresa_id))
+        );
 
-          if (visaoError) throw visaoError;
-
-          // 3. Filter visions based on subset logic
-          const filteredVisoes = (visoesData || []).filter((v: any) => {
-              if (hasFullAccess) return true;
-              
-              const visionCompanies = v.rel_visao_empresa || [];
-              if (visionCompanies.length === 0) return true; // Empty vision is safe/visible
-
-              // Show only if user has access to ALL companies in this vision
-              return visionCompanies.every((r: any) => allowedCompanyIds.has(r.empresa_id));
-          });
-
-          // 4. Update State
-          if (filteredVisoes.length > 0) {
-              setVisoes(filteredVisoes);
-              setSelectedVisao(filteredVisoes[0].id);
-          } else {
-              currentWarnings.push(`Nenhuma visão disponível para o cliente ${selectedClient.cli_nome}.`);
-              setVisoes([]);
-              setSelectedVisao('');
-          }
-
-      } catch (err: any) {
-          const errorMessage = err.message || 'Verifique a conexão ou as permissões da tabela.';
-          console.error("Failed to fetch visoes:", err);
-          currentWarnings.push(`Atenção: Não foi possível carregar as visões (${errorMessage}).`);
+        if (filtered.length) {
+          // Garante shape compatível com Visao (preenchendo vis_descri quando não vier da query)
+          const normalized: Visao[] = filtered.map((v: any) => ({
+            id: String(v.id),
+            vis_nome: String(v.vis_nome),
+            vis_descri: v.vis_descri ?? null,
+            cliente_id: v.cliente_id ?? null,
+          }));
+          setVisoes(normalized);
+          setSelectedVisao((prev: string) => (prev ? prev : normalized[0].id));
+        } else {
           setVisoes([]);
-      } finally {
-          setVisoesLoading(false);
-      }
-
-      if (currentWarnings.length > 0) {
-          setWarning(currentWarnings.join(' '));
+          setSelectedVisao('');
+        }
+        setDropdownsInitialized(true);
+      } catch (e) {
+        setDropdownsInitialized(true);
       }
     };
+    if (activePage === 'dashboard') fetchDropdowns();
+  }, [activePage, user?.id, selectedClient?.id, dropdownsInitialized, periods.length, visoes.length]);
 
-    if (activePage === 'dashboard') {
-        fetchDropdownData();
-    }
-  }, [activePage, selectedClient, user]); // Re-fetch if selectedClient or user changes
-  
-  // Fetch Template Configurations (Cards and Line Styles) when selectedVisao changes
+  // Configs - Improved resiliency
   useEffect(() => {
-    const fetchTemplateConfig = async () => {
-        if (!selectedVisao) {
-            setCardConfigs([]);
-            setLineStyles(new Map());
-            return;
+    const fetchConfigs = async () => {
+      if (!selectedVisao) {
+        setCardConfigs([]);
+        setLineStyles(new Map());
+        return;
+      }
+      try {
+        const currentVisao = visoes.find((vis: Visao) => vis.id === selectedVisao);
+        if (!currentVisao) return;
+
+        // Carrega mais detalhes da visão para direcionar o template correto (por CNPJ raiz, quando existir)
+        const { data: visaoDetails } = await supabase
+          .from('dre_visao')
+          .select('id, cliente_id, cnpj_raiz')
+          .eq('id', selectedVisao)
+          .single();
+
+        const visaoCnpjRaiz: string | null = (visaoDetails as any)?.cnpj_raiz || null;
+
+        // Busca template ativo priorizando o CNPJ raiz da visão (quando informado).
+        // Se não houver match exato por CNPJ, cai no fallback antigo (qualquer template ativo do cliente).
+        let templateQuery = supabase
+          .from('dre_template')
+          .select('id, cliente_cnpj, dre_ativo_sn, created_at')
+          .eq('cliente_id', currentVisao.cliente_id);
+
+        if (visaoCnpjRaiz) {
+          templateQuery = templateQuery.eq('cliente_cnpj', visaoCnpjRaiz);
+        }
+
+        const { data: tmps } = await templateQuery
+          .order('dre_ativo_sn', { ascending: false }) // 'S' vem antes de 'N'
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (!tmps?.length) {
+          setCardConfigs([]);
+          setLineStyles(new Map());
+          return;
         }
         
-        try {
-            // 1. Find the Client ID associated with the selected View
-            const visao = visoes.find(v => v.id === selectedVisao);
-            if (!visao || !visao.cliente_id) {
-                 setCardConfigs([]);
-                 setLineStyles(new Map());
-                 return;
-            }
+        const activeTemplateId = tmps[0].id;
 
-            // 2. Find the ACTIVE template for this client
-            const { data: template, error: templateError } = await supabase
-                .from('dre_template')
-                .select('id')
-                .eq('cliente_id', visao.cliente_id)
-                .eq('dre_ativo_sn', 'S')
-                .limit(1)
-                .single();
-            
-            if (templateError || !template) {
-                console.warn("Nenhum template ativo encontrado para o cliente desta visão.");
-                setCardConfigs([]);
-                setLineStyles(new Map());
-                return;
-            }
+        // Busca cards e estilos simultaneamente
+        const [cardsRes, linesRes] = await Promise.all([
+          supabase
+            .from('dre_template_card')
+            .select('*')
+            .eq('dre_template_id', activeTemplateId)
+            .order('crd_posicao'),
+          supabase
+            .from('dre_template_linhas')
+            .select(
+              `dre_linha_seq, tab_estilo_linha ( est_tipg_tela, est_nivel_ident )`
+            )
+            .eq('dre_template_id', activeTemplateId),
+        ]);
 
-            // 3. Fetch the card configurations
-            const { data: cards, error: cardsError } = await supabase
-                .from('dre_template_card')
-                .select('*')
-                .eq('dre_template_id', template.id);
-            
-            if (cardsError) {
-                console.error("Erro ao buscar configurações dos cards:", cardsError);
-                setCardConfigs([]);
-            } else {
-                setCardConfigs(cards || []);
-            }
-
-            // 4. Fetch Line Styles (joined with tab_estilo_linha)
-            const { data: lines, error: linesError } = await supabase
-                .from('dre_template_linhas')
-                .select(`
-                    dre_linha_seq,
-                    tab_estilo_linha (
-                        est_tipg_tela,
-                        est_nivel_ident
-                    )
-                `)
-                .eq('dre_template_id', template.id);
-
-            if (linesError) {
-                console.error("Erro ao buscar estilos das linhas:", linesError);
-                setLineStyles(new Map());
-            } else if (lines) {
-                const styleMap = new Map<number, LineStyle>();
-                lines.forEach((line: any) => {
-                     const estilo = line.tab_estilo_linha;
-                     if (estilo) {
-                         styleMap.set(line.dre_linha_seq, {
-                             seq: line.dre_linha_seq,
-                             tipografia: estilo.est_tipg_tela,
-                             indentacao: estilo.est_nivel_ident || 0
-                         });
-                     }
-                });
-                setLineStyles(styleMap);
-            }
-
-        } catch (err) {
-            console.error("Erro no fluxo de busca de configuração do template:", err);
-            setCardConfigs([]);
-            setLineStyles(new Map());
-        }
+        setCardConfigs(cardsRes.data || []);
+        
+        const map = new Map<number, LineStyle>();
+        (linesRes.data || []).forEach((l: any) => {
+          if (l.tab_estilo_linha) {
+            map.set(Number(l.dre_linha_seq), { 
+              seq: Number(l.dre_linha_seq), 
+              tipografia: l.tab_estilo_linha.est_tipg_tela, 
+              indentacao: l.tab_estilo_linha.est_nivel_ident || 0,
+            });
+          }
+        });
+        setLineStyles(map);
+      } catch (e) {
+        console.error("Error loading dashboard configs", e);
+        setCardConfigs([]);
+        setLineStyles(new Map());
+      }
     };
+    if (activePage === 'dashboard') {
+      fetchConfigs();
+    }
+  }, [activePage, selectedVisao, visoes]);
 
-    fetchTemplateConfig();
-  }, [selectedVisao, visoes]);
-
-
-  // Fetch Raw DRE data when filters change
+  // Webhook DRE – com regras mais estritas e abort controller + cache em memória
   useEffect(() => {
-    const fetchRawData = async () => {
-        if (activePage !== 'dashboard' || !selectedVisao || !selectedPeriod) {
-            setRawDreData([]);
-            setDreData([]);
-            return;
+    if (activePage !== 'dashboard' || !selectedVisao || !selectedPeriod) {
+      return;
+    }
+
+    const cacheKey = `${selectedVisao}-${selectedPeriod}`;
+    const controller = new AbortController();
+
+    const fetchData = async () => {
+      setLoading(true);
+      setError(null);
+      setWarning(null);
+
+      // 1) Tenta do cache primeiro
+      if (dreCacheRef.current[cacheKey]) {
+        const cached = dreCacheRef.current[cacheKey];
+        setRawDreData(cached);
+        if (!cached.length) {
+          setWarning('Sem Dados no Momento');
+        }
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const webhookUrl =
+          (import.meta as any).env?.VITE_DRE_WEBHOOK_URL ||
+          'https://webhook.moondog-ia.tech/webhook/dre';
+
+        const res = await fetch(
+          `${webhookUrl}?carga=${selectedPeriod}&id=${selectedVisao}`,
+          { signal: controller.signal }
+        );
+        const contentType = res.headers.get('content-type') || '';
+        const rawText = await res.text();
+
+        if (!res.ok) {
+          // inclui preview no debug acima (não joga corpo inteiro no console por segurança/perf)
+          throw new Error(`Falha na resposta do servidor (${res.status})`);
         }
 
-        setLoading(true);
-        setError(null);
-        setWarning(null);
-
+        let parsed: unknown;
         try {
-            const url = `https://webhook.moondog-ia.tech/webhook/dre?carga=${selectedPeriod}&id=${selectedVisao}`;
-            const response = await fetch(url);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Erro na API: ${response.status} - ${errorText || response.statusText}`);
-            }
-
-            // Fix: Handle empty body to avoid JSON parse error
-            const text = await response.text();
-            let data: any[] = [];
-            
-            if (text && text.trim().length > 0) {
-                try {
-                    data = JSON.parse(text);
-                } catch (e) {
-                    console.warn("Falha ao analisar JSON da API:", e);
-                    data = [];
-                }
-            } else {
-                data = [];
-            }
-            
-            if (!Array.isArray(data)) {
-                console.warn("Resposta da API não é um array:", data);
-                data = [];
-            }
-            setRawDreData(data);
-            
-            if (data.length === 0) {
-                setWarning("Sem Dados no Momento");
-            }
-
-        } catch (err: any) {
-            console.error("Failed to fetch DRE data from webhook:", err);
-            // Handle unexpected end of JSON specifically if it leaks through
-            if (err.message && err.message.includes("Unexpected end of JSON input")) {
-                 setRawDreData([]);
-                 setWarning("Sem Dados no Momento");
-            } else {
-                 setError(`Falha ao carregar dados do DRE: ${err.message}. Verifique o endpoint da API.`);
-                 setRawDreData([]);
-            }
-        } finally {
-            setLoading(false);
+          parsed = safeParseJson(rawText);
+        } catch (parseErr) {
+          throw new Error('Resposta do webhook não é um JSON válido');
         }
+
+        const arr = Array.isArray(parsed) ? parsed : [];
+
+        // cache em memória (ref) para evitar re-render/loops
+        dreCacheRef.current[cacheKey] = arr;
+
+        setRawDreData(arr);
+        if (!arr.length) {
+          setWarning('Sem Dados no Momento');
+        }
+      } catch (e: any) {
+        if (e.name === 'AbortError') {
+          return;
+        }
+        console.error('Erro ao buscar DRE:', e);
+        setRawDreData([]);
+        setWarning('Sem Dados no Momento');
+        setError(
+          e?.message === 'Failed to fetch'
+            ? 'Falha de comunicação com o servidor de DRE.'
+            : 'Erro ao carregar dados da DRE.'
+        );
+      } finally {
+        setLoading(false);
+      }
     };
 
-    fetchRawData();
+    fetchData();
+
+    return () => {
+      controller.abort();
+    };
   }, [activePage, selectedVisao, selectedPeriod]);
 
-  // Process Raw Data into Display Data (Formatted) when Raw Data or Styles change
+  // Processing Table Data
   useEffect(() => {
-    const processDisplayData = async () => {
-        if (rawDreData.length === 0) {
-            setDreData([]);
-            return;
-        }
-        
-        // Fetch visibility restrictions (can be cached or fetched once, but doing here for simplicity/safety)
-        const { data: restrictedLines, error: restError } = await supabase
-            .from('dre_template_linhas')
-            .select('id, visao_id')
-            .not('visao_id', 'is', null);
-
-        const restrictionMap = new Map<number | string, string>();
-        if (restrictedLines) {
-            restrictedLines.forEach((r: any) => restrictionMap.set(r.id, r.visao_id));
-        }
-
-        const visibleData = rawDreData.filter((row: any) => {
-            const isVisible = row.dre_linha_visivel === 'S';
-            const requiredVisaoId = row.visao_id || restrictionMap.get(row.id);
-            const matchesVisao = !requiredVisaoId || String(requiredVisaoId) === String(selectedVisao);
-            return isVisible && matchesVisao;
-        });
-
-        const formattedData: DreDataRow[] = visibleData.map((row: any) => {
-            const seq = row.dre_linha_seq;
-            // Get database styles as a fallback
-            const dbStyle = lineStyles.get(seq);
-            
-            // Prioritize API data for styling if available
-            const apiIndent = row.est_nivel_ident !== undefined && row.est_nivel_ident !== null ? Number(row.est_nivel_ident) : null;
-            const apiTypography = row.est_tipg_tela;
-
-            let isBold = false;
-            let isItalic = false;
-            let indentationLevel = 0;
-
-            if (apiTypography) {
-                 isBold = apiTypography === 'NEGRITO' || apiTypography === 'NEGR/ITAL';
-                 isItalic = apiTypography === 'ITALICO' || apiTypography === 'NEGR/ITAL';
-            } else {
-                 isBold = dbStyle?.tipografia === 'NEGRITO' || dbStyle?.tipografia === 'NEGR/ITAL';
-                 isItalic = dbStyle?.tipografia === 'ITALICO' || dbStyle?.tipografia === 'NEGR/ITAL';
-            }
-
-            if (apiIndent !== null) {
-                indentationLevel = apiIndent;
-            } else {
-                indentationLevel = dbStyle?.indentacao || 0;
-            }
-
-            return {
-                seq: seq, 
-                desc: row.dre_linha_descri,
-                jan: row.conta_janeiro,
-                fev: row.conta_fevereiro,
-                mar: row.conta_marco,
-                abr: row.conta_abril,
-                mai: row.conta_maio,
-                jun: row.conta_junho,
-                jul: row.conta_julho,
-                ago: row.conta_agosto,
-                set: row.conta_setembro,
-                out: row.conta_outubro,
-                nov: row.conta_novembro,
-                dez: row.conta_dezembro,
-                accumulated: row.conta_acumulado,
-                percentage: row.conta_perc,
-                isBold,
-                isItalic,
-                indentationLevel
-            };
-        });
-        
-        setDreData(formattedData);
-    };
-
-    processDisplayData();
-  }, [rawDreData, selectedVisao, lineStyles]);
-
-  
-  const pageTitles: { [key: string]: string } = {
-    dashboard: 'Dashboard',
-    visao: 'Gestão de Visões',
-    cliente: 'Gestão de Clientes',
-    'grupo-empresarial': 'Gestão de Grupos Empresariais',
-    empresa: 'Gestão de Empresas',
-    'plano-contabil': 'Gestão de Plano Contábil',
-    templates: 'Gestão de Templates',
-    situacao: 'Configurações - Situação',
-    'tipo-linha': 'Configurações - Tipo Linha DRE',
-    'estilo-linha': 'Configurações - Estilo Linha DRE',
-    'tipo-visao': 'Configurações - Tipo Visão DRE',
-    usuarios: 'Administração - Usuários',
-    permissoes: 'Administração - Permissões',
-  };
-
-  // --- Helper to generate standardized filenames ---
-  const getExportFileName = (extension: string) => {
-    const visao = visoes.find(v => v.id === selectedVisao);
-    const visaoNome = visao ? visao.vis_nome.replace(/\s+/g, '') : 'DRE';
-    return `${visaoNome}_${selectedPeriod}.${extension}`;
-  }
-
-  // --- Export Handlers ---
-  const handleExportCsv = () => {
-    if (dreData.length === 0) return;
-
-    const fileName = getExportFileName('csv');
-    const separator = ';';
+    if (!rawDreData.length) { setDreData([]); return; }
     
-    const allMonths = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const currentMonthIndex = selectedPeriod ? (Number(selectedPeriod) % 100) : 12;
-    const visibleMonths = allMonths.slice(0, currentMonthIndex);
-    
-    const headers = ["Descrição", ...visibleMonths, "Acumulado", "%"];
-    
-    const formatValue = (val: any) => {
-        if (typeof val === 'number') {
-            return `"${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}"`;
-        }
-        if (typeof val === 'string') {
-            return `"${val.replace(/"/g, '""')}"`;
-        }
-        if (val === null || val === undefined) {
-             return '""';
-        }
-        return '""';
-    };
+    // Filtra pela visão atual para garantir que não pegamos lixo de outras visões (se o webhook retornar multi-contexto)
+    const filteredByVisao = rawDreData.filter((r: any) => !r.visao_id || String(r.visao_id) === String(selectedVisao));
+    const visible = filteredByVisao.filter((r: any) => r.dre_linha_visivel === 'S');
+    setDreData(visible.map((r: any) => {
+        const seq = Number(r.dre_linha_seq || 0);
+        const s = lineStyles.get(seq);
+        const t = r.est_tipg_tela || s?.tipografia;
+        return {
+            seq, desc: r.dre_linha_descri || '',
+            jan: Number(r.conta_janeiro ?? 0), fev: Number(r.conta_fevereiro ?? 0), mar: Number(r.conta_marco ?? 0), abr: Number(r.conta_abril ?? 0), mai: Number(r.conta_maio ?? 0), jun: Number(r.conta_junho ?? 0), jul: Number(r.conta_julho ?? 0), ago: Number(r.conta_agosto ?? 0), set: Number(r.conta_setembro ?? 0), out: Number(r.conta_outubro ?? 0), nov: Number(r.conta_novembro ?? 0), dez: Number(r.conta_dezembro ?? 0),
+            accumulated: Number(r.conta_acumulado ?? 0), percentage: Number(r.conta_perc ?? 0),
+            isBold: t === 'NEGRITO' || t === 'NEGR/ITAL', isItalic: t === 'ITALICO' || t === 'NEGR/ITAL', indentationLevel: Number(r.est_nivel_ident ?? s?.indentacao ?? 0)
+        };
+    }));
+  }, [rawDreData, lineStyles, selectedVisao]);
 
-    const csvRows = [headers.map(h => `"${h}"`).join(separator)];
-    
-    dreData.forEach(row => {
-        const monthlyValues = visibleMonths.map(m => {
-            const val = row[m.toLowerCase() as keyof DreDataRow] as number || 0;
-            return formatValue(val);
-        });
-        
-        const values = [
-            formatValue(row.desc),
-            ...monthlyValues,
-            formatValue(row.accumulated || 0),
-            formatValue(row.percentage || 0)
-        ];
-        csvRows.push(values.join(separator));
-    });
-
-    const csvString = "\uFEFF" + csvRows.join("\n");
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", fileName);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleExportXlsx = () => {
-     if (dreData.length === 0) return;
-
-     const fileName = getExportFileName('xlsx');
-     
-     const allMonths = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-     const currentMonthIndex = selectedPeriod ? (Number(selectedPeriod) % 100) : 12;
-     const visibleMonths = allMonths.slice(0, currentMonthIndex);
-
-     const headers = ["Descrição", ...visibleMonths, "Acumulado", "%"];
-     
-     const formatNumber = (val: number | null | undefined) => (val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-     const formatPercentage = (val: number | null | undefined) => `${(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
-
-     const dataForSheet = dreData.map(row => {
-        const monthlyValues = visibleMonths.map(m => {
-            const val = row[m.toLowerCase() as keyof DreDataRow] as number || 0;
-            return formatNumber(val);
-        });
-
-        return [
-            row.desc,
-            ...monthlyValues,
-            formatNumber(row.accumulated), 
-            formatPercentage(row.percentage)
-        ];
-     });
-     
-     dataForSheet.unshift(headers as any);
-
-     const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
-     
-     const wscols = [
-        { wch: 40 }, // Descrição
-        ...visibleMonths.map(() => ({ wch: 15 })), // Months
-        { wch: 18 }, // Acumulado
-        { wch: 10 }  // %
-     ];
-     ws['!cols'] = wscols;
-
-     const wb = XLSX.utils.book_new();
-     XLSX.utils.book_append_sheet(wb, ws, "DRE");
-     
-     XLSX.writeFile(wb, fileName);
-  };
-
-  const handleExportPdf = () => {
-    if (dreData.length === 0) return;
-
-    const doc = new jsPDF('landscape');
-    const fileName = getExportFileName('pdf');
-    const visao = visoes.find(v => v.id === selectedVisao);
-    const periodo = periods.find(p => p.retorno === selectedPeriod);
-
-    const title = `DRE: ${visao?.vis_nome || 'Consolidado'}`;
-    const subtitle = `Período: ${periodo?.display || selectedPeriod}`;
-
-    doc.setFontSize(16);
-    doc.text(title, 14, 15);
-    doc.setFontSize(11);
-    doc.text(subtitle, 14, 22);
-
-    const allMonths = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const currentMonthIndex = selectedPeriod ? (Number(selectedPeriod) % 100) : 12;
-    const visibleMonths = allMonths.slice(0, currentMonthIndex);
-
-    const headers = [["Descrição", ...visibleMonths, "Acumulado", "%"]];
-    const dataRows = dreData.map(row => {
-        const monthly = visibleMonths.map(m => (row[m.toLowerCase() as keyof DreDataRow] as number || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-        return [
-            row.desc,
-            ...monthly,
-            (row.accumulated || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            `${(row.percentage || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
-        ];
-    });
-
-    (doc as any).autoTable({
-        head: headers,
-        body: dataRows,
-        startY: 30,
-        theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 1.5 },
-        headStyles: { fillColor: [31, 41, 55], textColor: [255, 255, 255] },
-        alternateRowStyles: { fillColor: [243, 244, 246] },
-        didParseCell: (data: any) => {
-            // Apply indentation to PDF if needed
-            if (data.section === 'body' && data.column.index === 0) {
-                const rowObj = dreData[data.row.index];
-                if (rowObj.isBold) data.cell.styles.fontStyle = 'bold';
-                if (rowObj.indentationLevel > 0) data.cell.styles.cellPadding = { left: 2 + (rowObj.indentationLevel * 3) };
-            }
-        }
-    });
-
-    doc.save(fileName);
-  };
-
-  const processCardData = (posicao: number) => {
-      const config = cardConfigs.find(c => c.crd_posicao === posicao);
-      if (!config || !config.dre_linha_seq) {
-          return {
-              title: `Card ${posicao}`,
-              subtitle: 'Não configurado',
-              value: '-',
-              percentage: '-',
-              variation: 0
-          };
+  const processCard = useCallback((pos: number) => {
+      const cfg = cardConfigs.find((c: CardConfig) => Number(c.crd_posicao) === pos);
+      if (!cfg || cfg.dre_linha_seq === null) return { title: `Card ${pos}`, subtitle: 'Não configurado', value: '-', percentage: '-', variation: 0 };
+      
+      // Busca a linha correspondente garantindo que seja da visão selecionada
+      const targetSeq = String(cfg.dre_linha_seq).trim();
+      const candidatesSameSeq = rawDreData.filter((row: any) => String(row?.dre_linha_seq).trim() === targetSeq);
+      const r = candidatesSameSeq.find((row: any) =>
+        (!row.visao_id || String(row.visao_id) === String(selectedVisao))
+      );
+      
+      if (!r) {
+        return { title: cfg.tit_card_ajust || `Card ${pos}`, subtitle: 'Sem dados', value: '-', percentage: '-', variation: 0 };
       }
 
-      // Find the data row based on seq (use dreData because it's already formatted/filtered, but logic here relies on raw values usually found in rawDreData or DreData)
-      // Since DreDataRow has the raw values, we can use dreData.
-      const row = dreData.find(r => r.seq === config.dre_linha_seq);
-      if (!row) {
-           return {
-              title: config.tit_card_ajust || `Card ${posicao}`,
-              subtitle: 'Sem dados',
-              value: '-',
-              percentage: '-',
-              variation: 0
-          };
-      }
+      const format = (type: 'ACUM' | 'PERC', compact: boolean) => {
+          const v = Number(type === 'ACUM' ? (r.conta_acumulado ?? 0) : (r.conta_perc ?? 0));
+          return type === 'ACUM' 
+            ? `R$ ${safeToLocaleString(v, { minimumFractionDigits: 2, maximumFractionDigits: 2, notation: compact ? "compact" : "standard" })}` 
+            : `${safeToLocaleString(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+      };
 
-      // Format Value 1
-      const val1Type = config.vlr_linha_01;
-      const rawVal1 = val1Type === 'ACUM' ? (row.accumulated || 0) : (row.percentage || 0);
-      const formattedVal1 = val1Type === 'ACUM' 
-        ? `R$ ${rawVal1.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2, notation: "compact" })}`
-        : `${rawVal1.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
-
-      // Format Value 2 (Subtitle/Percentage text)
-      const val2Type = config.vlr_linha_02;
-      const rawVal2 = val2Type === 'ACUM' ? (row.accumulated || 0) : (row.percentage || 0);
-      const formattedVal2 = val2Type === 'ACUM' 
-         ? `R$ ${rawVal2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-         : `${rawVal2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
-
-      // Calculate Variation (Current Month vs Previous Month)
-      let variation = 0;
+      let vnt = 0;
       if (selectedPeriod) {
-          const monthIndex = (Number(selectedPeriod) % 100); // 1-12
-          if (monthIndex > 1) {
-               const monthKeys: (keyof DreDataRow)[] = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-               const currentKey = monthKeys[monthIndex - 1];
-               const prevKey = monthKeys[monthIndex - 2];
-               
-               const currentVal = (row[currentKey] as number) || 0;
-               const prevVal = (row[prevKey] as number) || 0;
-               
-               if (prevVal !== 0) {
-                   variation = ((currentVal - prevVal) / Math.abs(prevVal)) * 100;
-               } else if (currentVal !== 0) {
-                   variation = 100; 
-               }
+          const m = (Number(selectedPeriod) % 100);
+          if (m > 1) {
+               const keys = ['conta_janeiro', 'conta_fevereiro', 'conta_marco', 'conta_abril', 'conta_maio', 'conta_junho', 'conta_julho', 'conta_agosto', 'conta_setembro', 'conta_outubro', 'conta_novembro', 'conta_dezembro'];
+               const cur = Number(r[keys[m - 1]] ?? 0); 
+               const pre = Number(r[keys[m - 2]] ?? 0);
+               vnt = pre !== 0 ? ((cur - pre) / Math.abs(pre)) * 100 : (cur !== 0 ? 100 : 0);
           }
       }
+      // Alterado para format(..., false) para exibir valor full em vez de compacto
+      return { title: cfg.tit_card_ajust || r.dre_linha_descri, subtitle: 'vs Mês Anterior', value: format(cfg.vlr_linha_01, false), percentage: format(cfg.vlr_linha_02, false), variation: vnt };
+  }, [cardConfigs, rawDreData, selectedPeriod, selectedVisao]);
 
-      return {
-          title: config.tit_card_ajust || row.desc,
-          subtitle: 'vs Mês Anterior',
-          value: formattedVal1,
-          percentage: formattedVal2,
-          variation: variation
-      };
-  };
-
-  // Helper for Initials
-  const getInitials = (name: string | null | undefined) => {
-      if (!name) return 'U';
-      const parts = name.trim().split(' ');
-      if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  };
-
+  const getInitials = (n: any) => { if (!n) return 'U'; const p = String(n).trim().split(' '); return p.length === 1 ? p[0].substring(0, 2).toUpperCase() : (p[0][0] + p[p.length - 1][0]).toUpperCase(); };
 
   return (
     <div className="flex h-screen bg-gray-900 text-gray-300">
-      <Sidebar 
-        isSidebarOpen={isSidebarOpen} 
-        setIsSidebarOpen={setIsSidebarOpen}
-        activePage={activePage}
-        setActivePage={setActivePage}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
-        selectedClient={selectedClient}
-        onChangeClient={() => selectClient(null)}
-      />
+      <Sidebar isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} activePage={activePage} setActivePage={setActivePage} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} selectedClient={selectedClient} onChangeClient={() => selectClient(null)} />
       <div className="flex flex-col flex-1 w-full overflow-y-auto">
-        {/* Adjusted Header Height to h-16 (standard nav height) */}
         <header className="flex items-center justify-between h-16 px-6 bg-gray-800 border-b border-gray-700 sticky top-0 z-20">
-            <div className="flex items-center">
-                <button className="text-gray-300 lg:hidden mr-4" onClick={() => setIsSidebarOpen(true)}>
-                    <MenuIcon />
-                </button>
-                <h1 className="text-xl font-semibold text-white">{pageTitles[activePage] || 'Dashboard'}</h1>
-            </div>
-            
-            <div className="flex items-center gap-4">
-                <div className="hidden md:block text-right">
-                    <p className="text-sm font-bold text-white leading-tight">{profile?.full_name || 'Usuário'}</p>
-                    <p className="text-xs text-gray-400 truncate max-w-[150px] leading-tight">{user?.email}</p>
-                </div>
-                <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md border border-indigo-500 hover:bg-indigo-500 transition-colors cursor-default">
-                    {getInitials(profile?.full_name)}
-                </div>
-                <div className="border-l border-gray-600 h-8 mx-2"></div>
-                <button 
-                    onClick={signOut} 
-                    className="p-2 text-gray-300 hover:text-red-400 hover:bg-gray-700 rounded-full transition-colors flex items-center gap-2 group"
-                    title="Sair do Sistema"
-                >
-                    <LogoutIcon />
-                    <span className="hidden lg:inline text-sm font-medium group-hover:text-red-400 transition-colors">Sair</span>
-                </button>
-            </div>
+            <div className="flex items-center"><button className="lg:hidden mr-4" onClick={() => setIsSidebarOpen(true)}><MenuIcon /></button><h1 className="text-xl font-semibold text-white">{activePage === 'dashboard' ? 'Dashboard' : 'Gestão'}</h1></div>
+            <div className="flex items-center gap-4"><div className="hidden md:block text-right"><p className="text-sm font-bold text-white leading-tight">{profile?.full_name || 'Usuário'}</p><p className="text-xs text-gray-400">{user?.email}</p></div><div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold border border-indigo-500">{getInitials(profile?.full_name)}</div><div className="border-l border-gray-600 h-8 mx-2"></div><button onClick={signOut} className="p-2 text-gray-300 hover:text-red-400 group"><LogoutIcon /></button></div>
         </header>
-
         <main className="p-4">
           {activePage === 'dashboard' && (
             <div>
-              {/* Sticky container for cards and filters */}
-              <div className="sticky top-16 z-10 bg-gray-900 -mx-4 px-4 py-4 mb-4">
-                  {(error || warning) && (
-                    <div className={`p-3 mb-4 text-sm rounded-lg ${error ? 'text-red-400 bg-red-900/50 border border-red-800' : 'text-yellow-400 bg-yellow-900/50 border border-yellow-800'}`}>
-                        {error || warning}
-                    </div>
-                  )}
-
-                  {/* Filters and Title - MOVED ABOVE CARDS */}
-                  <div className="p-4 mb-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md">
-                    <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-                      <h2 className="text-lg font-bold text-white">DRE VISÃO CONSOLIDADA</h2>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <select 
-                          value={selectedPeriod}
-                          onChange={(e) => setSelectedPeriod(Number(e.target.value))}
-                          disabled={periodsLoading || periods.length === 0}
-                          className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                        >
-                          {periodsLoading ? (
-                            <option>Carregando...</option>
-                          ) : periods.length > 0 ? (
-                            periods.map(p => <option key={p.retorno} value={p.retorno}>{p.display}</option>)
-                          ) : (
-                            <option>Sem períodos</option>
-                          )}
-                        </select>
-                        <select
-                          value={selectedVisao}
-                          onChange={(e) => setSelectedVisao(e.target.value)}
-                          disabled={visoesLoading || visoes.length === 0}
-                          className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                        >
-                          {visoesLoading ? (
-                            <option>Carregando...</option>
-                          ) : visoes.length > 0 ? (
-                            visoes.map(v => (
-                              <option key={v.id} value={v.id} title={v.vis_descri || v.vis_nome}>
-                                {v.vis_nome}
-                              </option>
-                            ))
-                          ) : (
-                            <option>Nenhuma visão</option>
-                          )}
-                        </select>
-                        <button 
-                            onClick={handleExportPdf}
-                            disabled={dreData.length === 0}
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <PdfIcon /> PDF
-                        </button>
-                        <button 
-                            onClick={handleExportCsv}
-                            disabled={dreData.length === 0}
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <CsvIcon /> CSV
-                        </button>
-                        <button 
-                            onClick={handleExportXlsx}
-                            disabled={dreData.length === 0}
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <XlsxIcon /> XLSX
-                        </button>
-                      </div>
+              <div className="mb-4">
+                  {(error || warning) && <div className={`p-3 mb-4 text-sm rounded-lg ${error ? 'text-red-400 bg-red-900/50 border border-red-800' : 'text-yellow-400 bg-yellow-900/50 border border-yellow-800'}`}>{error || warning}</div>}
+                  <div className="px-4 py-2 mb-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md flex flex-col md:flex-row justify-between items-center gap-4">
+                    <h2 className="text-lg font-bold text-white uppercase">DRE Visão Consolidada</h2>
+                    <div className="flex gap-2">
+                        <select value={selectedPeriod} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedPeriod(Number(e.target.value))} className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md">{periods.map((p: Periodo) => <option key={p.retorno} value={p.retorno}>{p.display}</option>)}</select>
+                        <select value={selectedVisao} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedVisao(e.target.value)} className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md">{visoes.map((v: Visao) => <option key={v.id} value={v.id}>{v.vis_nome}</option>)}</select>
+                        <button onClick={() => {
+                            const ws = XLSX.utils.json_to_sheet(dreData);
+                            const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "DRE");
+                            XLSX.writeFile(wb, `DRE_${selectedPeriod}.xlsx`);
+                        }} disabled={!dreData.length} className="flex items-center whitespace-nowrap px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600"><XlsxIcon /> XLSX</button>
                     </div>
                   </div>
-
-                  {/* Stat Cards - Dynamically Rendered */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {[1, 2, 3, 4].map(pos => {
-                        const data = processCardData(pos);
-                        return (
-                            <StatCard 
-                                key={pos}
-                                title={data.title} 
-                                subtitle={data.subtitle} 
-                                value={data.value} 
-                                percentage={data.percentage} 
-                                variation={data.variation} 
-                            />
-                        );
-                    })}
+                    {[1, 2, 3, 4].map(p => { const d = processCard(p); return <StatCard key={p} title={d.title} subtitle={d.subtitle} value={d.value} percentage={d.percentage} variation={d.variation} />; })}
                   </div>
               </div>
-              
-              {/* Data Table */}
-              <div className={`bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700 ${dreData.length > 0 && !loading ? 'items-start' : 'items-center justify-center'}`}>
-                {loading ? (
-                    <div className="flex flex-col items-center justify-center min-h-[400px]">
-                        <div className="w-12 h-12 border-4 border-t-transparent border-indigo-500 rounded-full animate-spin"></div>
-                        <span className="mt-4 text-lg text-gray-300">Carregando dados...</span>
-                    </div>
-                ) : dreData.length > 0 ? (
-                    <div className="w-full">
-                        <DreTable data={dreData} selectedPeriod={selectedPeriod} />
-                    </div>
-                ) : (
-                    <div className="flex flex-col items-center justify-center text-center p-8 min-h-[400px]">
-                        {(!selectedPeriod || !selectedVisao) ? (
-                            <>
-                                <div className="w-16 h-16 bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-                                    </svg>
-                                </div>
-                                <h3 className="text-xl font-bold text-white mb-2">Selecione os Filtros</h3>
-                                <p className="text-gray-400 max-w-sm">Escolha um Período e uma Visão acima para carregar os dados do DRE.</p>
-                            </>
-                        ) : (
-                            <>
-                                <div className="w-16 h-16 bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                </div>
-                                <h3 className="text-xl font-bold text-white mb-2">Sem Dados no Momento</h3>
-                                <p className="text-gray-400 max-w-sm">Não encontramos registros financeiros para este cliente no período selecionado.</p>
-                            </>
-                        )}
-                    </div>
-                )}
-              </div>
+              <div className="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700">{loading ? <div className="flex flex-col items-center justify-center min-h-[400px]"><div className="w-12 h-12 border-4 border-t-transparent border-indigo-500 rounded-full animate-spin"></div></div> : dreData.length ? <DreTable data={dreData} selectedPeriod={selectedPeriod} /> : <div className="text-center p-8 min-h-[400px] flex flex-col justify-center"><h3 className="text-xl font-bold text-white mb-2">Sem Dados</h3><p className="text-gray-400">Não há registros para os filtros selecionados.</p></div>}</div>
             </div>
           )}
           {activePage === 'visao' && <VisaoPage />}
@@ -1222,14 +549,6 @@ const DashboardPage: React.FC = () => {
           {activePage === 'estilo-linha' && <EstiloLinhaPage />}
           {activePage === 'tipo-visao' && <TipoVisaoPage />}
           {activePage === 'usuarios' && <UsuarioPage />}
-          {activePage === 'permissoes' && (
-             <div className="flex items-center justify-center h-full p-8 text-center bg-gray-800 border border-gray-700 rounded-lg">
-                <div>
-                    <h2 className="text-xl font-bold text-white">Em Desenvolvimento</h2>
-                    <p className="mt-2 text-gray-400">Esta funcionalidade estará disponível em breve.</p>
-                </div>
-            </div>
-          )}
         </main>
       </div>
     </div>

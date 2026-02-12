@@ -1,0 +1,787 @@
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { supabase } from '../../lib/supabaseClient';
+import Modal from '../shared/Modal';
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
+import { useAuth } from '../../contexts/AuthContext';
+
+interface Cliente { id: string; cli_nome: string | null; }
+interface CnpjRaiz { cnpj_raiz: string; reduz_emp: string | null; }
+interface TipoLinha { id: number; tipo_linha: string | null; }
+interface EstiloLinha { id: number; estilo_nome: string | null; }
+interface PlanoConta { conta_estru: string; conta_descri: string | null; }
+interface Visao { id: string; vis_nome: string | null; }
+
+interface TemplateHeader {
+  id?: string;
+  cliente_id: string | null;
+  dre_nome: string | null;
+  dre_uso: string | null;
+  dre_cont: string | null;
+  dre_ativo_sn: string;
+  cliente_cnpj: string | null;
+}
+interface TemplateLinha {
+  id?: string | number;
+  dre_template_id?: string;
+  dre_linha_seq: number;
+  tipo_linha_id: number | null;
+  estilo_linha_id: number | null;
+  dre_linha_descri: string | null;
+  dre_linha_nivel: number | null;
+  dre_linha_visivel: string;
+  dre_linha_valor: string | null;
+  dre_linha_valor_fonte?: 'VALOR' | 'CONTA' | 'FORMULA' | null;
+  visao_id?: string | null;
+  perc_ref?: string | null;
+}
+interface TemplateLinhaForState extends TemplateLinha {
+  _internalKey: string | number;
+}
+interface TemplateViewData {
+  dre_linha_seq: number;
+  dre_linha_descri: string | null;
+  tipo_linha: string | null;
+  dre_linha_valor_descri: string | null;
+  dre_linha_valor_fonte: string | null;
+  dre_linha_visivel: string;
+  visao_nome?: string | null;
+}
+
+interface TemplateEditPageProps {
+  templateId: string | 'new';
+  onBack: () => void;
+}
+
+const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack }) => {
+  const { user, selectedClient } = useAuth();
+  
+  const [headerData, setHeaderData] = useState<TemplateHeader>({
+    cliente_id: selectedClient?.id || '',
+    dre_nome: '',
+    dre_uso: '',
+    dre_cont: '',
+    dre_ativo_sn: 'S',
+    cliente_cnpj: '',
+  });
+  
+  const [linhasData, setLinhasData] = useState<TemplateLinhaForState[]>([]);
+  const [cnpjs, setCnpjs] = useState<CnpjRaiz[]>([]);
+  const [visoes, setVisoes] = useState<Visao[]>([]);
+  const [tiposLinha, setTiposLinha] = useState<TipoLinha[]>([]);
+  const [estilosLinha, setEstilosLinha] = useState<EstiloLinha[]>([]);
+  const [planoContas, setPlanoContas] = useState<PlanoConta[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Permissions State
+  const [userPermissions, setUserPermissions] = useState<{
+      allowedRoots: Set<string>,
+      clientFullAccess: boolean
+  }>({ allowedRoots: new Set(), clientFullAccess: false });
+
+  // View Modal State
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [viewData, setViewData] = useState<TemplateViewData[]>([]);
+  const [isViewLoading, setIsViewLoading] = useState(false);
+  const [viewError, setViewError] = useState<string | null>(null);
+  const [showVisibleOnly, setShowVisibleOnly] = useState(false);
+  const [isFallbackView, setIsFallbackView] = useState(false);
+
+  // Account Search Modal State
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [accountSearchQuery, setAccountSearchQuery] = useState('');
+  const [accountSearchResults, setAccountSearchResults] = useState<PlanoConta[]>([]);
+  const [isSearchingAccounts, setIsSearchingAccounts] = useState(false);
+  const [editingLinhaIndex, setEditingLinhaIndex] = useState<number | null>(null);
+
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
+
+  const tiposLinhaMap = useMemo(() => {
+      const map = new Map<number, string>();
+      tiposLinha.forEach(t => {
+          if (t.tipo_linha) {
+              map.set(t.id, t.tipo_linha.toUpperCase());
+          }
+      });
+      return map;
+  }, [tiposLinha]);
+  
+  const planoContasMap = useMemo(() => {
+    return new Map(planoContas.map(acc => [acc.conta_estru, acc.conta_descri]));
+  }, [planoContas]);
+
+  const filteredViewData = useMemo(() => {
+    if (showVisibleOnly) {
+        return viewData.filter(row => row.dre_linha_visivel === 'S');
+    }
+    return viewData;
+  }, [viewData, showVisibleOnly]);
+
+  const fetchData = useCallback(async () => {
+    if (!user?.id || !selectedClient?.id) return;
+    
+    setLoading(true);
+    setError(null);
+    try {
+      // 1. Fetch User Permissions for the specific selected client
+      const [relRes, tiposRes, estilosRes] = await Promise.all([
+        supabase.from('rel_prof_cli_empr')
+          .select('cliente_id, empresa_id, dre_empresa(emp_cnpj_raiz)')
+          .eq('profile_id', user.id)
+          .eq('cliente_id', selectedClient.id)
+          .eq('rel_situacao_id', 'ATV'),
+        supabase.from('tab_tipo_linha').select('*').order('tipo_linha'),
+        supabase.from('tab_estilo_linha').select('*').order('estilo_nome'),
+      ]);
+
+      if (relRes.error) throw relRes.error;
+      if (tiposRes.error) throw tiposRes.error;
+      if (estilosRes.error) throw estilosRes.error;
+
+      // Process Permissions
+      let clientFullAccess = false;
+      const allowedRoots = new Set<string>();
+
+      if (relRes.data) {
+          relRes.data.forEach((r: any) => {
+              if (r.empresa_id === null) {
+                  clientFullAccess = true;
+              } else if (r.dre_empresa?.emp_cnpj_raiz) {
+                  allowedRoots.add(r.dre_empresa.emp_cnpj_raiz);
+              }
+          });
+      }
+      
+      setUserPermissions({ allowedRoots, clientFullAccess });
+      setTiposLinha(tiposRes.data || []);
+      setEstilosLinha(estilosRes.data || []);
+
+      // 2. Fetch specific template if not new
+      if (templateId !== 'new') {
+        const { data: templateData, error: templateError } = await supabase
+          .from('dre_template')
+          .select('*')
+          .eq('id', templateId)
+          .eq('cliente_id', selectedClient.id) // Enforce client context
+          .single();
+        
+        if (templateError) throw templateError;
+        setHeaderData(templateData);
+
+        const { data: linhasDataFromDb, error: linhasError } = await supabase
+          .from('dre_template_linhas')
+          .select('*')
+          .eq('dre_template_id', templateId)
+          .order('dre_linha_seq');
+        
+        if (linhasError) throw linhasError;
+        
+        const parsedLinhas: TemplateLinhaForState[] = (linhasDataFromDb || []).map((l: any) => ({ ...l, _internalKey: l.id }));
+        setLinhasData(parsedLinhas);
+      } else {
+          // Initialize for new template
+          setHeaderData(prev => ({ ...prev, cliente_id: selectedClient.id }));
+      }
+    } catch (err: any) {
+      setError(`Falha ao carregar dados do template: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [templateId, user?.id, selectedClient?.id]); // FIX: Use IDs instead of objects
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+  
+  // Fetch CNPJs and Visões based on Context
+  useEffect(() => {
+    const fetchClientData = async () => {
+      if (!selectedClient) return;
+      
+      try {
+          const { data: cnpjData, error: cnpjError } = await supabase
+            .from('viw_cnpj_raiz')
+            .select('cnpj_raiz, reduz_emp')
+            .eq('cliente_id', selectedClient.id);
+          
+          if (cnpjError) throw cnpjError;
+          
+          let filteredCnpjs = cnpjData || [];
+          if (!userPermissions.clientFullAccess) {
+              filteredCnpjs = filteredCnpjs.filter(c => userPermissions.allowedRoots.has(c.cnpj_raiz));
+          }
+          setCnpjs(filteredCnpjs);
+
+          const { data: visaoData, error: visaoError } = await supabase
+            .from('dre_visao')
+            .select('id, vis_nome')
+            .eq('cliente_id', selectedClient.id)
+            .order('vis_nome');
+          
+          if (visaoError) throw visaoError;
+          setVisoes(visaoData || []);
+
+      } catch (err: any) {
+          console.error("Erro ao buscar dados do cliente:", err);
+      }
+    };
+    fetchClientData();
+  }, [selectedClient, userPermissions]);
+  
+  useEffect(() => {
+    const fetchInitialPlanoContas = async () => {
+        if (!headerData.cliente_cnpj) {
+            setPlanoContas([]);
+            return;
+        }
+        try {
+            const { data, error } = await supabase
+                .from('dre_plano_contabil')
+                .select('conta_estru, conta_descri')
+                .eq('cnpj_raiz', headerData.cliente_cnpj)
+                .limit(5000)
+                .order('conta_estru');
+
+            if (error) throw error;
+            setPlanoContas(data || []);
+        } catch (err: any) {
+            setError(`Falha ao carregar plano de contas: ${err.message}`);
+            setPlanoContas([]);
+        }
+    };
+    fetchInitialPlanoContas();
+  }, [headerData.cliente_cnpj]);
+
+  useEffect(() => {
+      if (!isAccountModalOpen || !accountSearchQuery || !headerData.cliente_cnpj) {
+          setAccountSearchResults([]);
+          return;
+      }
+
+      const handler = setTimeout(async () => {
+          setIsSearchingAccounts(true);
+          try {
+              const { data, error } = await supabase
+                  .from('dre_plano_contabil')
+                  .select('conta_estru, conta_descri')
+                  .eq('cnpj_raiz', headerData.cliente_cnpj)
+                  .or(`conta_estru.ilike.%${accountSearchQuery}%,conta_descri.ilike.%${accountSearchQuery}%`)
+                  .limit(100)
+                  .order('conta_estru');
+              if (error) throw error;
+              setAccountSearchResults(data || []);
+          } catch (err: any) {
+              console.error("Account search error:", err.message || err);
+              setAccountSearchResults([]);
+          } finally {
+              setIsSearchingAccounts(false);
+          }
+      }, 300);
+
+      return () => clearTimeout(handler);
+  }, [accountSearchQuery, isAccountModalOpen, headerData.cliente_cnpj]);
+
+  const handleHeaderChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    if (type === 'checkbox') {
+        setHeaderData(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked ? 'S' : 'N' }));
+    } else {
+        const upperValue = name !== 'cliente_cnpj' ? value.toUpperCase() : value;
+        setHeaderData(prev => ({ ...prev, [name]: upperValue }));
+    }
+  };
+
+  const handleLinhaChange = (index: number, field: keyof TemplateLinha, value: any) => {
+    setLinhasData(currentLinhas => {
+        const newLinhas = [...currentLinhas];
+        const linhaToUpdate = { ...newLinhas[index] };
+        (linhaToUpdate as any)[field] = value;
+
+        if (field === 'tipo_linha_id') {
+            linhaToUpdate.dre_linha_valor = ''; 
+            const newTipo = tiposLinhaMap.get(Number(value));
+            
+            if (newTipo === 'CONSTANTE') {
+              linhaToUpdate.dre_linha_valor_fonte = 'VALOR';
+              linhaToUpdate.estilo_linha_id = null;
+              linhaToUpdate.dre_linha_visivel = 'N'; 
+            } else {
+              linhaToUpdate.dre_linha_valor_fonte = null;
+              linhaToUpdate.dre_linha_visivel = 'S'; 
+            }
+        }
+        
+        if (field === 'dre_linha_valor_fonte') {
+            linhaToUpdate.dre_linha_valor = '';
+        }
+
+        newLinhas[index] = linhaToUpdate;
+        return newLinhas;
+    });
+  };
+
+  const addLinha = () => {
+    const newLinha: TemplateLinhaForState = {
+      _internalKey: `new_${Date.now()}`,
+      dre_linha_seq: linhasData.length > 0 ? Math.max(...linhasData.map(l => l.dre_linha_seq)) + 1 : 1,
+      tipo_linha_id: null,
+      estilo_linha_id: null,
+      dre_linha_descri: '',
+      dre_linha_nivel: 0,
+      dre_linha_visivel: 'S',
+      dre_linha_valor: '',
+      dre_linha_valor_fonte: null,
+      visao_id: null,
+      perc_ref: '',
+    };
+    setLinhasData(prev => [...prev, newLinha]);
+  };
+
+  const removeLinha = (key: string | number) => {
+    setLinhasData(prev => prev.filter(l => l._internalKey !== key));
+  };
+  
+  const openAccountSearchModal = (index: number) => {
+    setEditingLinhaIndex(index);
+    setAccountSearchQuery('');
+    setAccountSearchResults([]);
+    setIsAccountModalOpen(true);
+  };
+
+  const selectAccount = (conta: PlanoConta) => {
+    if (editingLinhaIndex !== null) {
+        handleLinhaChange(editingLinhaIndex, 'dre_linha_valor', conta.conta_estru);
+    }
+    setIsAccountModalOpen(false);
+    setEditingLinhaIndex(null);
+  };
+
+  const handleDragSort = () => {
+    if (dragItem.current === null || dragOverItem.current === null) return;
+    const newLinhas = [...linhasData];
+    const draggedItemContent = newLinhas.splice(dragItem.current, 1)[0];
+    newLinhas.splice(dragOverItem.current, 0, draggedItemContent);
+    dragItem.current = null;
+    dragOverItem.current = null;
+    setLinhasData(newLinhas);
+  };
+  
+  const handleViewTemplate = async () => {
+      if (!headerData.dre_cont) {
+        setError("Este template não possui um código de controle para visualização. Salve o template primeiro.");
+        setTimeout(() => setError(null), 4000);
+        return;
+      }
+      setIsViewModalOpen(true);
+      setIsViewLoading(true);
+      setViewError(null);
+      setViewData([]);
+      setIsFallbackView(false);
+
+      try {
+        const response = await fetch(`https://webhook.moondog-ia.tech/webhook/temp_dre?cntr=${headerData.dre_cont}`);
+        if (response.ok) {
+            const text = await response.text();
+            if (text && text.trim().length > 0) {
+                try {
+                    const data: TemplateViewData[] = JSON.parse(text);
+                    if (Array.isArray(data)) {
+                        data.sort((a, b) => a.dre_linha_seq - b.dre_linha_seq);
+                        setViewData(data);
+                        return;
+                    }
+                } catch (e) {
+                     console.warn("Webhook invalid JSON, trying fallback...");
+                }
+            }
+        }
+        
+        const { data: lines, error: dbError } = await supabase
+            .from('dre_template_linhas')
+            .select(`
+                dre_linha_seq, 
+                dre_linha_descri, 
+                dre_linha_valor, 
+                dre_linha_valor_fonte, 
+                dre_linha_visivel, 
+                tab_tipo_linha ( tipo_linha ),
+                dre_visao ( vis_nome )
+            `)
+            .eq('dre_template_id', templateId)
+            .order('dre_linha_seq');
+
+        if (dbError) throw dbError;
+
+        const fallbackData: TemplateViewData[] = (lines || []).map((l: any) => ({
+            dre_linha_seq: l.dre_linha_seq,
+            dre_linha_descri: l.dre_linha_descri,
+            tipo_linha: l.tab_tipo_linha?.tipo_linha || '',
+            dre_linha_valor_descri: l.dre_linha_valor,
+            dre_linha_valor_fonte: l.dre_linha_valor_fonte,
+            dre_linha_visivel: l.dre_linha_visivel,
+            visao_nome: l.dre_visao?.vis_nome || null
+        }));
+        
+        setViewData(fallbackData);
+        setIsFallbackView(true);
+
+      } catch (err: any) {
+        setViewError(`Falha ao carregar visualização: ${err.message}`);
+      } finally {
+        setIsViewLoading(false);
+      }
+    };
+
+    const closeViewModal = () => {
+      setIsViewModalOpen(false);
+      setViewData([]);
+      setViewError(null);
+      setShowVisibleOnly(false);
+    };
+
+    const handleExportPdf = () => {
+        if (!headerData.dre_nome || filteredViewData.length === 0) return;
+        const doc: any = new jsPDF();
+        doc.text(`Template: ${headerData.dre_nome}`, 14, 16);
+        const tableColumn = ["SEQ", "Descrição", "Tipo", "Valor / Conta / Fórmula", "Visão", "Fonte", "Visível"];
+        const tableRows = filteredViewData.map(item => [
+            item.dre_linha_seq,
+            item.dre_linha_descri || '',
+            item.tipo_linha || '',
+            item.dre_linha_valor_descri || '',
+            item.visao_nome || 'Todas',
+            item.dre_linha_valor_fonte || 'N/A',
+            item.dre_linha_visivel === 'S' ? 'Sim' : 'Não'
+        ]);
+        doc.autoTable({
+            head: [tableColumn],
+            body: tableRows,
+            startY: 24,
+            theme: 'grid',
+            headStyles: { fillColor: [34, 41, 51] },
+            styles: { font: 'Roboto', cellPadding: 2, fontSize: 8 },
+        });
+        doc.save(`template_${headerData.dre_nome?.toLowerCase().replace(/\s/g, '_')}.pdf`);
+    };
+
+  const handleSave = async () => {
+    if (!selectedClient) return;
+    setSaving(true);
+    setError(null);
+    let currentTemplateId = templateId !== 'new' ? templateId : undefined;
+
+    try {
+      // Step 1: Save Header
+      const { id, ...headerPayload } = headerData;
+      headerPayload.cliente_id = selectedClient.id; // Force context
+
+      if (templateId === 'new') {
+        const { data, error } = await supabase.from('dre_template').insert(headerPayload).select().single();
+        if (error) throw error;
+        currentTemplateId = data.id;
+      } else {
+        const { error } = await supabase.from('dre_template').update(headerPayload).eq('id', currentTemplateId);
+        if (error) throw error;
+      }
+      
+      if (!currentTemplateId) throw new Error("Não foi possível obter o ID do template.");
+
+      // Step 2: Manage Lines
+      const { data: existingLines, error: fetchLinesError } = await supabase
+        .from('dre_template_linhas')
+        .select('id')
+        .eq('dre_template_id', currentTemplateId);
+
+      if (fetchLinesError) throw fetchLinesError;
+
+      const existingIds = new Set((existingLines || []).map((l: any) => l.id));
+      const incomingIds = new Set(linhasData.map(l => l.id).filter((id): id is string | number => id !== undefined));
+      const idsToDelete = [...existingIds].filter(id => !incomingIds.has(id as string | number));
+
+      if (idsToDelete.length > 0) {
+         const { error: deleteError } = await supabase.from('dre_template_linhas').delete().in('id', idsToDelete);
+         if (deleteError) {
+            if (deleteError.code === '23503') throw new Error("Linhas vinculadas a Cards do Dashboard não podem ser excluídas.");
+            throw deleteError;
+         }
+      }
+      
+      const linesToInsert: any[] = [];
+      const linesToUpdate: any[] = [];
+
+      linhasData.forEach((linha, index) => {
+        const tipoLinha = tiposLinhaMap.get(Number(linha.tipo_linha_id));
+        const basePayload = {
+            dre_template_id: currentTemplateId,
+            dre_linha_seq: index + 1,
+            tipo_linha_id: linha.tipo_linha_id,
+            estilo_linha_id: linha.estilo_linha_id,
+            dre_linha_descri: linha.dre_linha_descri,
+            dre_linha_nivel: linha.dre_linha_nivel,
+            dre_linha_visivel: linha.dre_linha_visivel,
+            dre_linha_valor: linha.dre_linha_valor,
+            dre_linha_valor_fonte: tipoLinha === 'CONSTANTE' ? (linha.dre_linha_valor_fonte || 'VALOR') : null,
+            visao_id: linha.visao_id || null,
+            perc_ref: linha.perc_ref || null,
+        };
+        if (linha.id) linesToUpdate.push({ ...basePayload, id: linha.id });
+        else linesToInsert.push(basePayload);
+      });
+
+      if (linesToUpdate.length > 0) await supabase.from('dre_template_linhas').upsert(linesToUpdate);
+      if (linesToInsert.length > 0) await supabase.from('dre_template_linhas').insert(linesToInsert);
+      
+      onBack();
+    } catch (err: any) {
+        setError(`Falha ao salvar template: ${err.message}`);
+    } finally {
+        setSaving(false);
+    }
+  };
+
+  const ActionButtons = ({ showTopBorder = false }: { showTopBorder?: boolean }) => (
+    <div className={`flex justify-between items-center ${showTopBorder ? 'pt-4 mt-4 border-t border-gray-700' : 'pb-2'}`}>
+      <button onClick={onBack} disabled={saving} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500 disabled:opacity-50">Voltar</button>
+      <div className="flex items-center space-x-3">
+        <button onClick={addLinha} className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700">Adicionar Linha</button>
+        <button onClick={handleSave} disabled={saving} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50">
+          {saving ? 'Salvando...' : 'Salvar Template'}
+        </button>
+      </div>
+    </div>
+  );
+  
+  const renderValorCell = (linha: TemplateLinhaForState, index: number) => {
+    const tipo = linha.tipo_linha_id ? tiposLinhaMap.get(linha.tipo_linha_id) : undefined;
+    const isDisabled = !headerData.cliente_cnpj;
+
+    if (tipo === 'TITULO' || tipo === 'SEPARADOR') return <input type="text" value="N/A" disabled className="w-full px-2 py-1 text-gray-400 bg-gray-600 border-gray-500 rounded-md cursor-not-allowed" />;
+    
+    if (tipo === 'CONTA' || (tipo === 'CONSTANTE' && linha.dre_linha_valor_fonte === 'CONTA')) {
+        const descri = planoContasMap.get(linha.dre_linha_valor || '');
+        return (
+            <div className="flex items-center w-full">
+                <input type="text" value={descri ? `${linha.dre_linha_valor} - ${descri}` : (linha.dre_linha_valor || '')} disabled className="w-full px-2 py-1 text-gray-300 bg-gray-600 border-gray-500 rounded-l-md" placeholder="Nenhuma conta" />
+                <button type="button" onClick={() => openAccountSearchModal(index)} disabled={isDisabled} className="px-3 py-1 text-white bg-indigo-600 rounded-r-md hover:bg-indigo-700 disabled:bg-indigo-800"><i className="fas fa-search"></i></button>
+            </div>
+        );
+    }
+    
+    if (tipo === 'FORMULA' || tipo === 'ACUM VLR ANT' || (tipo === 'CONSTANTE' && linha.dre_linha_valor_fonte === 'FORMULA')) {
+        return <input type="text" value={linha.dre_linha_valor || ''} onChange={(e) => handleLinhaChange(index, 'dre_linha_valor', e.target.value.toUpperCase())} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md" placeholder="Ex: L1-L2"/>;
+    }
+
+    if (tipo === 'CONSTANTE' && linha.dre_linha_valor_fonte === 'VALOR') {
+        return <input type="number" step="0.01" value={linha.dre_linha_valor || ''} onChange={(e) => handleLinhaChange(index, 'dre_linha_valor', e.target.value)} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md" />;
+    }
+
+    return <input type="text" value={linha.dre_linha_valor || ''} disabled className="w-full px-2 py-1 text-gray-400 bg-gray-600 border-gray-500 rounded-md cursor-not-allowed" />;
+  };
+
+  if (loading) return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando...</span></div>;
+
+  return (
+    <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-white">{templateId === 'new' ? 'Novo Template' : 'Editar Template'} ({selectedClient?.cli_nome})</h2>
+        {templateId !== 'new' && (
+            <button onClick={handleViewTemplate} className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-cyan-600 rounded-md hover:bg-cyan-700">
+                <i className="fas fa-eye mr-2"></i> Visualizar Estrutura
+            </button>
+        )}
+      </div>
+
+      {error && <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{error}</div>}
+
+      <div className="p-4 space-y-4 bg-gray-900/50 border border-gray-700 rounded-lg">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300">Nome do Template</label>
+            <input type="text" name="dre_nome" value={headerData.dre_nome || ''} onChange={handleHeaderChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300">CNPJ Raiz (Plano de Contas)</label>
+            <select name="cliente_cnpj" value={headerData.cliente_cnpj || ''} onChange={handleHeaderChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md">
+              <option value="">Selecione um CNPJ</option>
+              {cnpjs.map(c => <option key={c.cnpj_raiz} value={c.cnpj_raiz}>{c.reduz_emp} ({c.cnpj_raiz})</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300">Uso</label>
+            <input type="text" name="dre_uso" value={headerData.dre_uso || ''} onChange={handleHeaderChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300">Controle</label>
+            <input type="text" name="dre_cont" value={headerData.dre_cont || ''} onChange={handleHeaderChange} maxLength={10} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md" />
+          </div>
+          <div className="flex items-center pt-6">
+            <label className="flex items-center space-x-2 text-sm font-medium text-gray-300 cursor-pointer">
+              <input type="checkbox" name="dre_ativo_sn" checked={headerData.dre_ativo_sn === 'S'} onChange={handleHeaderChange} className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500" />
+              <span>Template Ativo?</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <h3 className="text-lg font-bold text-white">Linhas do Template</h3>
+        <ActionButtons />
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm divide-y divide-gray-700">
+            <thead className="bg-gray-700">
+              <tr>
+                <th className="px-2 py-2"></th>
+                <th className="px-2 py-2 text-xs text-left text-gray-400">SEQ</th>
+                <th className="px-2 py-2 text-xs text-left text-gray-400 min-w-[250px]">Descrição</th>
+                <th className="px-2 py-2 text-xs text-left text-gray-400">Nível</th>
+                <th className="px-2 py-2 text-xs text-left text-gray-400 min-w-[120px]">Tipo</th>
+                <th className="px-2 py-2 text-xs text-left text-gray-400 min-w-[150px]">Estilo / Fonte</th>
+                <th className="px-2 py-2 text-xs text-left text-gray-400 w-20">% REF</th>
+                <th className="px-2 py-2 text-xs text-left text-gray-400 min-w-[250px]">Valor / Conta / Fórmula</th>
+                <th className="px-2 py-2 text-xs text-left text-gray-400 min-w-[150px]">Visão Exclusiva</th>
+                <th className="px-2 py-2 text-xs text-center text-gray-400">Visível</th>
+                <th className="px-2 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="bg-gray-800 divide-y divide-gray-700">
+              {linhasData.map((linha, index) => {
+                const isConstant = linha.tipo_linha_id && tiposLinhaMap.get(linha.tipo_linha_id) === 'CONSTANTE';
+                return (
+                  <tr key={linha._internalKey} draggable onDragStart={() => dragItem.current = index} onDragEnter={() => dragOverItem.current = index} onDragEnd={handleDragSort} onDragOver={(e) => e.preventDefault()} className="hover:bg-gray-700/50 cursor-move">
+                    <td className="px-2 py-1 text-center text-gray-500">☰</td>
+                    <td className="px-2 py-1 text-gray-400">{index + 1}</td>
+                    <td className="px-1 py-1"><input type="text" value={linha.dre_linha_descri || ''} onChange={(e) => handleLinhaChange(index, 'dre_linha_descri', e.target.value.toUpperCase())} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md"/></td>
+                    <td className="px-1 py-1"><input type="number" value={linha.dre_linha_nivel || 0} onChange={(e) => handleLinhaChange(index, 'dre_linha_nivel', parseInt(e.target.value, 10))} className="w-16 px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md"/></td>
+                    <td className="px-1 py-1">
+                      <select value={linha.tipo_linha_id || ''} onChange={(e) => handleLinhaChange(index, 'tipo_linha_id', parseInt(e.target.value, 10))} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md">
+                        <option value="" disabled>Selecione</option>
+                        {tiposLinha.map((t: TipoLinha) => <option key={t.id} value={t.id}>{t.tipo_linha}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-1 py-1">
+                      {isConstant ? (
+                        <select value={linha.dre_linha_valor_fonte || 'VALOR'} onChange={(e) => handleLinhaChange(index, 'dre_linha_valor_fonte', e.target.value as TemplateLinha['dre_linha_valor_fonte'])} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md">
+                            <option value="VALOR">Valor Fixo</option>
+                            <option value="CONTA">Conta Contábil</option>
+                            <option value="FORMULA">Fórmula</option>
+                        </select>
+                      ) : (
+                        <select value={linha.estilo_linha_id || ''} onChange={(e) => handleLinhaChange(index, 'estilo_linha_id', parseInt(e.target.value, 10))} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md">
+                            <option value="">Nenhum</option>
+                            {estilosLinha.map((e: EstiloLinha) => <option key={e.id} value={e.id}>{e.estilo_nome}</option>)}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-1 py-1"><input type="text" value={linha.perc_ref || ''} onChange={(e) => handleLinhaChange(index, 'perc_ref', e.target.value.toUpperCase())} className="w-20 px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md" maxLength={10}/></td>
+                    <td className="px-1 py-1">{renderValorCell(linha, index)}</td>
+                    <td className="px-1 py-1">
+                        <select value={linha.visao_id || ''} onChange={(e) => handleLinhaChange(index, 'visao_id', e.target.value || null)} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md">
+                            <option value="">Todas</option>
+                            {visoes.map(v => <option key={v.id} value={v.id}>{v.vis_nome}</option>)}
+                        </select>
+                    </td>
+                    <td className="px-2 py-1 text-center"><input type="checkbox" checked={linha.dre_linha_visivel === 'S'} onChange={(e) => handleLinhaChange(index, 'dre_linha_visivel', e.target.checked ? 'S' : 'N')} className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded" /></td>
+                    <td className="px-2 py-1 text-center"><button onClick={() => removeLinha(linha._internalKey)} className="text-red-500 hover:text-red-400"><i className="fas fa-times"></i></button></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <ActionButtons showTopBorder={true} />
+      </div>
+
+      <Modal isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} title="Buscar Conta Contábil" size="2xl">
+        <div className="space-y-4">
+            <input type="text" value={accountSearchQuery} onChange={(e) => setAccountSearchQuery(e.target.value)} placeholder="Digite o código ou a descrição..." className="w-full px-3 py-2 text-white bg-gray-700 border border-gray-600 rounded-md" autoFocus />
+            <div className="max-h-80 overflow-y-auto">
+                {isSearchingAccounts ? (
+                     <div className="flex items-center justify-center p-4"><div className="w-6 h-6 border-2 border-t-transparent border-indigo-400 rounded-full animate-spin"></div></div>
+                ) : accountSearchResults.length > 0 ? (
+                    <ul className="divide-y divide-gray-700">
+                        {accountSearchResults.map(conta => (
+                            <li key={conta.conta_estru} onClick={() => selectAccount(conta)} className="p-2 cursor-pointer hover:bg-indigo-600 rounded-md">
+                                <div className="font-semibold text-white">{conta.conta_estru}</div>
+                                <div className="text-sm text-gray-300">{conta.conta_descri}</div>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <div className="p-4 text-center text-gray-400">{accountSearchQuery ? "Nenhuma conta encontrada." : "Digite para buscar."}</div>
+                )}
+            </div>
+        </div>
+      </Modal>
+
+       <Modal isOpen={isViewModalOpen} onClose={closeViewModal} title={`Visualização: ${headerData?.dre_nome || ''}`} size="screen80">
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+                <div className="flex items-center justify-end">
+                    <label className="flex items-center space-x-2 text-sm font-medium text-gray-300 cursor-pointer">
+                        <input type="checkbox" checked={showVisibleOnly} onChange={(e) => setShowVisibleOnly(e.target.checked)} className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded" />
+                        <span>Apenas linhas visíveis</span>
+                    </label>
+                </div>
+                {isViewLoading && <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div></div>}
+                {viewError && <div className="p-3 text-red-300 bg-red-900/40 border border-red-700 rounded-md">{viewError}</div>}
+                {isFallbackView && !isViewLoading && !viewError && (
+                 <div className="p-3 mb-4 text-sm text-yellow-300 bg-yellow-900/30 border border-yellow-700 rounded-md">
+                     A visualização processada não está disponível. Exibindo estrutura bruta do banco de dados.
+                 </div>
+                )}
+                {!isViewLoading && !viewError && filteredViewData.length > 0 && (
+                  <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm divide-y divide-gray-700">
+                          <thead className="bg-gray-700">
+                              <tr>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">SEQ</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Descrição</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Tipo</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Valor / Conta / Fórmula</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Visão</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Fonte</th>
+                                  <th className="px-3 py-2 text-xs font-semibold tracking-wider text-left text-gray-400">Visível</th>
+                              </tr>
+                          </thead>
+                          <tbody className="bg-gray-800 divide-y divide-gray-700">
+                              {filteredViewData.map((row) => (
+                                  <tr key={row.dre_linha_seq}>
+                                      <td className="px-3 py-2 text-gray-400">{row.dre_linha_seq}</td>
+                                      <td className="px-3 py-2 text-white">{row.dre_linha_descri}</td>
+                                      <td className="px-3 py-2 text-gray-300">{row.tipo_linha}</td>
+                                      <td className="px-3 py-2 text-gray-300">{row.dre_linha_valor_descri}</td>
+                                      <td className="px-3 py-2 text-gray-300">{row.visao_nome || 'Todas'}</td>
+                                      <td className="px-3 py-2 text-gray-400">{row.dre_linha_valor_fonte || 'N/A'}</td>
+                                      <td className="px-3 py-2 text-gray-400">{row.dre_linha_visivel === 'S' ? 'Sim' : 'Não'}</td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+                )}
+                {!isViewLoading && !viewError && filteredViewData.length === 0 && (
+                    <div className="p-6 text-center bg-gray-800/50">
+                        <p className="text-gray-400">Nenhum dado retornado para este template.</p>
+                    </div>
+                )}
+            </div>
+            <div className="flex justify-end pt-4 mt-4 border-t border-gray-700 space-x-2">
+                <button 
+                    type="button" 
+                    onClick={handleExportPdf} 
+                    disabled={filteredViewData.length === 0 || isViewLoading}
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 disabled:bg-teal-800 disabled:cursor-not-allowed"
+                >
+                    <i className="fas fa-file-pdf mr-2"></i>
+                    Exportar PDF
+                </button>
+                <button type="button" onClick={closeViewModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">
+                    Fechar
+                </button>
+            </div>
+      </Modal>
+    </div>
+  );
+};
+
+export default TemplateEditPage;

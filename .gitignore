@@ -9,6 +9,11 @@ lerna-debug.log*
 
 node_modules
 dist
+
+# Variáveis de ambiente (não versionar .env.local com chaves reais)
+.env
+.env.local
+.env.*.local
 dist-ssr
 *.local
 

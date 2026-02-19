@@ -531,9 +531,11 @@ const DashboardPage: React.FC = () => {
                         }} disabled={!dreData.length} className="flex items-center whitespace-nowrap px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600"><XlsxIcon /> XLSX</button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {[1, 2, 3, 4].map(p => { const d = processCard(p); return <StatCard key={p} title={d.title} subtitle={d.subtitle} value={d.value} percentage={d.percentage} variation={d.variation} />; })}
-                  </div>
+                  {cardConfigs.length > 0 && (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      {[1, 2, 3, 4].map(p => { const d = processCard(p); return <StatCard key={p} title={d.title} subtitle={d.subtitle} value={d.value} percentage={d.percentage} variation={d.variation} />; })}
+                    </div>
+                  )}
               </div>
               <div className="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700">{loading ? <div className="flex flex-col items-center justify-center min-h-[400px]"><div className="w-12 h-12 border-4 border-t-transparent border-indigo-500 rounded-full animate-spin"></div></div> : dreData.length ? <DreTable data={dreData} selectedPeriod={selectedPeriod} /> : <div className="text-center p-8 min-h-[400px] flex flex-col justify-center"><h3 className="text-xl font-bold text-white mb-2">Sem Dados</h3><p className="text-gray-400">Não há registros para os filtros selecionados.</p></div>}</div>
             </div>

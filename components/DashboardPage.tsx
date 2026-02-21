@@ -63,6 +63,7 @@ const ChevronDownIcon = () => <Icon path="M19 9l-7 7-7-7" className="h-4 w-4" />
 const ChevronUpIcon = () => <Icon path="M5 15l7-7 7 7" className="h-4 w-4" />;
 const LogoutIcon = () => <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />;
 const XlsxIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" className="h-5 w-5 mr-1 text-green-500" />;
+const CsvIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" className="h-5 w-5 mr-1 text-blue-400" />;
 const SwitchIcon = () => <Icon path="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" className="h-4 w-4" />;
 const MenuIcon = () => <Icon path="M4 6h16M4 12h16M4 18h16" />;
 const CloseIcon = () => <Icon path="M6 18L18 6M6 6l12 12" />;
@@ -525,15 +526,33 @@ const DashboardPage: React.FC = () => {
                         <select value={selectedPeriod} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedPeriod(Number(e.target.value))} className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md">{periods.map((p: Periodo) => <option key={p.retorno} value={p.retorno}>{p.display}</option>)}</select>
                         <select value={selectedVisao} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedVisao(e.target.value)} className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md">{visoes.map((v: Visao) => <option key={v.id} value={v.id}>{v.vis_nome}</option>)}</select>
                         <button onClick={() => {
-                            const ws = XLSX.utils.json_to_sheet(dreData);
+                            const ws = XLSX.utils.json_to_sheet(dreData.map(({ isBold, isItalic, indentationLevel, ...rest }) => rest));
                             const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "DRE");
                             XLSX.writeFile(wb, `DRE_${selectedPeriod}.xlsx`);
                         }} disabled={!dreData.length} className="flex items-center whitespace-nowrap px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600"><XlsxIcon /> XLSX</button>
+                        <button onClick={() => {
+                            const ws = XLSX.utils.json_to_sheet(dreData.map(({ isBold, isItalic, indentationLevel, ...rest }) => rest));
+                            const csv = XLSX.utils.sheet_to_csv(ws);
+                            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                            const link = document.createElement("a");
+                            const url = URL.createObjectURL(blob);
+                            link.setAttribute("href", url);
+                            link.setAttribute("download", `DRE_${selectedPeriod}.csv`);
+                            link.style.visibility = 'hidden';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                        }} disabled={!dreData.length} className="flex items-center whitespace-nowrap px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600"><CsvIcon /> CSV</button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {[1, 2, 3, 4].map(p => { const d = processCard(p); return <StatCard key={p} title={d.title} subtitle={d.subtitle} value={d.value} percentage={d.percentage} variation={d.variation} />; })}
-                  </div>
+                  {cardConfigs.length > 0 && (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      {cardConfigs.map(cfg => { 
+                        const d = processCard(cfg.crd_posicao); 
+                        return <StatCard key={cfg.id} title={d.title} subtitle={d.subtitle} value={d.value} percentage={d.percentage} variation={d.variation} />; 
+                      })}
+                    </div>
+                  )}
               </div>
               <div className="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700">{loading ? <div className="flex flex-col items-center justify-center min-h-[400px]"><div className="w-12 h-12 border-4 border-t-transparent border-indigo-500 rounded-full animate-spin"></div></div> : dreData.length ? <DreTable data={dreData} selectedPeriod={selectedPeriod} /> : <div className="text-center p-8 min-h-[400px] flex flex-col justify-center"><h3 className="text-xl font-bold text-white mb-2">Sem Dados</h3><p className="text-gray-400">Não há registros para os filtros selecionados.</p></div>}</div>
             </div>

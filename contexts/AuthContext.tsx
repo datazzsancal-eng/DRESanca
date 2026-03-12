@@ -25,6 +25,7 @@ interface AuthContextType {
   selectedClient: ClientContext | null;
   selectClient: (client: ClientContext | null) => void;
   clearClientData: () => void;
+  refreshClients: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -252,6 +253,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [fetchUserClients]);
 
+  const refreshClients = useCallback(async () => {
+    if (user) {
+      await fetchUserClients(user.id, true);
+    }
+  }, [user, fetchUserClients]);
+
   const signOut = useCallback(async () => {
     setLoading(true);
     try {
@@ -279,8 +286,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     selectedClient,
     selectClient,
     clearClientData,
+    refreshClients,
     signOut,
-  }), [session, user, profile, loading, availableClients, selectedClient, selectClient, clearClientData, signOut]);
+  }), [session, user, profile, loading, availableClients, selectedClient, selectClient, clearClientData, refreshClients, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

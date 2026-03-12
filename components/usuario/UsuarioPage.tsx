@@ -274,21 +274,21 @@ const UsuarioPage: React.FC = () => {
       
       if (addedClients.length > 0) {
           setLoadingDetails(true);
-          const newRoots = { ...userConfig.selectedRoots };
-          const newCompanies = { ...userConfig.selectedCompanies };
+          const addedRoots: Record<string, Set<string>> = {};
+          const addedCompanies: Record<string, Set<string>> = {};
 
           await Promise.all(addedClients.map(async (cliId) => {
               const details = await fetchClientDetails(cliId);
               
               // Default: Select ALL roots and ALL companies
-              const allRoots = new Set<string>(details.cnpjs.map((r: any) => r.cnpj_raiz));
-              const allCompanies = new Set<string>(details.empresas.map((e: any) => e.id));
-              
-              newRoots[cliId] = allRoots;
-              newCompanies[cliId] = allCompanies;
+              addedRoots[cliId] = new Set<string>(details.cnpjs.map((r: any) => r.cnpj_raiz));
+              addedCompanies[cliId] = new Set<string>(details.empresas.map((e: any) => e.id));
           }));
 
-          setUserConfig({ selectedRoots: newRoots, selectedCompanies: newCompanies });
+          setUserConfig(prev => ({ 
+              selectedRoots: { ...prev.selectedRoots, ...addedRoots }, 
+              selectedCompanies: { ...prev.selectedCompanies, ...addedCompanies } 
+          }));
           setLoadingDetails(false);
       }
 
@@ -353,7 +353,26 @@ const UsuarioPage: React.FC = () => {
 
       selectedClientIds.forEach(clienteId => {
           const selectedCompanies = userConfig.selectedCompanies[clienteId];
-          if (selectedCompanies && selectedCompanies.size > 0) {
+          const clientDetails = clientCache[clienteId];
+
+          if (!clientDetails || clientDetails.empresas.length === 0) {
+              // Client has no companies yet, or details not loaded. Grant full access so they can see the client.
+              rowsToInsert.push({
+                  profile_id: userId,
+                  cliente_id: clienteId,
+                  empresa_id: null,
+                  rel_situacao_id: 'ATV'
+              });
+          } else if (selectedCompanies && selectedCompanies.size === clientDetails.empresas.length) {
+              // All companies selected -> Grant full access (null)
+              rowsToInsert.push({
+                  profile_id: userId,
+                  cliente_id: clienteId,
+                  empresa_id: null,
+                  rel_situacao_id: 'ATV'
+              });
+          } else if (selectedCompanies && selectedCompanies.size > 0) {
+              // Granular access
               selectedCompanies.forEach(empresaId => {
                   rowsToInsert.push({
                       profile_id: userId,
@@ -363,6 +382,9 @@ const UsuarioPage: React.FC = () => {
                   });
               });
           }
+          // If selectedCompanies.size === 0 but clientDetails.empresas.length > 0, 
+          // we don't insert anything. The user explicitly unchecked all companies, 
+          // so they lose access to this client.
       });
 
       if (rowsToInsert.length > 0) {

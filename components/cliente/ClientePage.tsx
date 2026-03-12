@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import Modal from '../shared/Modal';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Type definitions
 interface Situacao {
@@ -17,6 +18,7 @@ interface Cliente {
 }
 
 const ClientePage: React.FC = () => {
+  const { user, refreshClients } = useAuth();
   // State management
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [situacoes, setSituacoes] = useState<Situacao[]>([]);
@@ -126,10 +128,30 @@ const ClientePage: React.FC = () => {
         error = updateError;
     } else {
       // Create
-      const { error: insertError } = await supabase
+      const { data: insertedData, error: insertError } = await supabase
         .from('dre_cliente')
-        .insert(payload);
-        error = insertError;
+        .insert(payload)
+        .select();
+        
+      error = insertError;
+
+      if (!error && insertedData && insertedData.length > 0 && user) {
+          const newClienteId = insertedData[0].id;
+          const { error: relError } = await supabase
+              .from('rel_prof_cli_empr')
+              .insert({
+                  profile_id: user.id,
+                  cliente_id: newClienteId,
+                  empresa_id: null,
+                  rel_situacao_id: 'ATV'
+              });
+              
+          if (relError) {
+              console.warn("Erro ao associar cliente ao usuário:", relError.message);
+          } else {
+              await refreshClients();
+          }
+      }
     }
 
     if (error) {

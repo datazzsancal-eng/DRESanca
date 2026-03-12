@@ -207,6 +207,23 @@ const EmpresaPage: React.FC = () => {
       if (insertError) {
         requestError = insertError;
       } else if (newEmpresa) {
+        // Auto-associate the new company with the current user
+        if (user && newEmpresa.cliente_id) {
+            try {
+                const { error: relProfError } = await supabase
+                    .from('rel_prof_cli_empr')
+                    .insert({
+                        profile_id: user.id,
+                        cliente_id: newEmpresa.cliente_id,
+                        empresa_id: newEmpresa.id,
+                        rel_situacao_id: 'ATV'
+                    });
+                if (relProfError) console.warn('Falha na associação automática com o usuário:', relProfError.message);
+            } catch (assocUserError: any) {
+                console.warn('Erro durante a associação automática com o usuário:', assocUserError.message);
+            }
+        }
+
         // Auto-associate the new company with relevant visions
         try {
           const { data: tiposVisao, error: tiposError } = await supabase

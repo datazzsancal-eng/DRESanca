@@ -48,16 +48,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   });
 
-  // Refs para evitar loops e race conditions
-  const isInitializingRef = useRef(false);
-  const isFetchingClientsRef = useRef(false);
-  const selectedClientRef = useRef<ClientContext | null>(selectedClient);
-
-  // Atualizar ref quando selectedClient mudar
-  useEffect(() => {
-    selectedClientRef.current = selectedClient;
-  }, [selectedClient]);
-
   const fetchProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -77,14 +67,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const fetchUserClients = useCallback(async (userId: string, skipAutoSelect: boolean = false) => {
-    // Prevenir múltiplas chamadas simultâneas
-    if (isFetchingClientsRef.current) {
-      console.log('fetchUserClients já está em execução, ignorando chamada duplicada');
-      return;
-    }
-
-    isFetchingClientsRef.current = true;
-
     try {
       const { data: relData, error: relError } = await supabase
         .from('rel_prof_cli_empr')
@@ -97,11 +79,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!relData || relData.length === 0) {
           setAvailableClients([]);
-          const currentSelected = selectedClientRef.current;
-          if (currentSelected) {
-              setSelectedClientState(null);
-              localStorage.removeItem('dre_selected_client');
-          }
+          setSelectedClientState(prev => {
+              if (prev) localStorage.removeItem('dre_selected_client');
+              return null;
+          });
           return;
       }
 
@@ -118,34 +99,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const clients = clientsData || [];
       setAvailableClients(clients);
 
-      // Usar ref para obter o valor atualizado sem causar re-renders
-      const currentSelected = selectedClientRef.current;
-
-      // Validar cliente selecionado contra a nova lista
-      if (currentSelected) {
-          const isValid = clients.find((c: ClientContext) => c.id === currentSelected.id);
-          if (!isValid) {
-              // Cliente não é mais válido, remover
-              setSelectedClientState(null);
-              localStorage.removeItem('dre_selected_client');
-          } else if (isValid.cli_nome !== currentSelected.cli_nome) {
-              // Nome mudou, atualizar silenciosamente sem causar loop
-              const updatedClient = { ...isValid };
-              setSelectedClientState(updatedClient);
-              localStorage.setItem('dre_selected_client', JSON.stringify(updatedClient));
+      setSelectedClientState(currentSelected => {
+          if (currentSelected) {
+              const isValid = clients.find((c: ClientContext) => c.id === currentSelected.id);
+              if (!isValid) {
+                  localStorage.removeItem('dre_selected_client');
+                  return null;
+              } else if (isValid.cli_nome !== currentSelected.cli_nome) {
+                  const updatedClient = { ...isValid };
+                  localStorage.setItem('dre_selected_client', JSON.stringify(updatedClient));
+                  return updatedClient;
+              }
+              return currentSelected;
+          } else if (!skipAutoSelect && clients.length === 1) {
+              const singleClient = clients[0];
+              localStorage.setItem('dre_selected_client', JSON.stringify(singleClient));
+              return singleClient;
           }
-      } else if (!skipAutoSelect && clients.length === 1) {
-          // Auto-selecionar se houver apenas um cliente
-          const singleClient = clients[0];
-          setSelectedClientState(singleClient);
-          localStorage.setItem('dre_selected_client', JSON.stringify(singleClient));
-      }
+          return currentSelected;
+      });
 
     } catch (error) {
       console.error('Error fetching user clients:', error);
       setAvailableClients([]);
-    } finally {
-      isFetchingClientsRef.current = false;
     }
   }, []);
 
@@ -165,91 +141,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let mounted = true;
-    let subscription: { unsubscribe: () => void } | null = null;
 
-    const initAuth = async () => {
-        if (isInitializingRef.current) {
-          console.log('initAuth já está em execução, ignorando chamada duplicada');
-          return;
-        }
-
-        isInitializingRef.current = true;
-
-        try {
-            const { data: { session }, error } = await supabase.auth.getSession();
-            if (error) {
-              console.error("Get session error:", error);
-              if (mounted) setLoading(false);
-              return;
-            }
-
-            if (mounted) {
-                setSession(session);
-                setUser(session?.user ?? null);
-
-                if (session?.user) {
-                    await Promise.all([
-                        fetchProfile(session.user.id),
-                        fetchUserClients(session.user.id, false)
-                    ]);
-                }
-            }
-        } catch (err) {
-            console.error("Auth init exception:", err);
-        } finally {
-            if (mounted) {
-              setLoading(false);
-              isInitializingRef.current = false;
-            }
-        }
+    const loadUserData = async (sessionUser: User) => {
+      try {
+        await Promise.all([
+          fetchProfile(sessionUser.id),
+          fetchUserClients(sessionUser.id, false)
+        ]);
+      } catch (err) {
+        console.error("Error fetching user data:", err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
     };
 
-    initAuth();
-
-    // Configurar listener de mudanças de autenticação
-    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event: string, session: Session | null) => {
-        if (!mounted) return;
-
-        // Ignorar eventos durante a inicialização para evitar duplicação
-        if (isInitializingRef.current && event === 'SIGNED_IN') {
-          console.log('Ignorando SIGNED_IN durante inicialização');
-          return;
-        }
-        
+    // 1. Get initial session
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error("Get session error:", error);
+        if (mounted) setLoading(false);
+        return;
+      }
+      
+      if (mounted) {
         setSession(session);
         setUser(session?.user ?? null);
-
-        if (event === 'SIGNED_IN' && session?.user) {
-             // Buscar dados do usuário
-             try {
-               await Promise.all([
-                  fetchProfile(session.user.id),
-                  fetchUserClients(session.user.id, false)
-               ]);
-             } catch (err) {
-               console.error('Error fetching user data on SIGNED_IN:', err);
-             }
-        } else if (event === 'SIGNED_OUT') {
-            setProfile(null);
-            setAvailableClients([]);
-            setSelectedClientState(null);
-            localStorage.removeItem('dre_selected_client');
-            setLoading(false);
-        } else if (event === 'TOKEN_REFRESHED') {
-            // Token foi atualizado, garantir que loading está false
-            setLoading(false);
+        
+        if (session?.user) {
+          loadUserData(session.user);
+        } else {
+          setLoading(false);
         }
+      }
     });
 
-    subscription = authSubscription;
+    // 2. Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      
+      // INITIAL_SESSION is handled by getSession above to avoid duplicate fetches
+      if (event === 'INITIAL_SESSION') return;
+
+      setSession(session);
+      setUser(session?.user ?? null);
+
+      if (event === 'SIGNED_IN' && session?.user) {
+        setLoading(true);
+        loadUserData(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        setProfile(null);
+        setAvailableClients([]);
+        setSelectedClientState(null);
+        localStorage.removeItem('dre_selected_client');
+        setLoading(false);
+      } else if (event === 'TOKEN_REFRESHED') {
+        setLoading(false);
+      }
+    });
 
     return () => {
       mounted = false;
-      isInitializingRef.current = false;
-      isFetchingClientsRef.current = false;
-      if (subscription) {
-        subscription.unsubscribe();
-      }
+      subscription.unsubscribe();
     };
   }, [fetchUserClients]);
 

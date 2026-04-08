@@ -13,6 +13,7 @@ import EstiloLinhaPage from './estilo-linha/EstiloLinhaPage';
 import TipoVisaoPage from './tipo-visao/TipoVisaoPage';
 import VisaoPage from './visao/VisaoPage';
 import UsuarioPage from './usuario/UsuarioPage';
+import { TableSkeleton, CardSkeleton } from './shared/Skeleton';
 import * as XLSX from 'xlsx';
 
 // Type definitions
@@ -283,91 +284,7 @@ const DashboardPage: React.FC = () => {
     if (activePage === 'dashboard') fetchDropdowns();
   }, [activePage, user?.id, selectedClient?.id, dropdownsInitialized, periods.length, visoes.length]);
 
-  // Configs - Improved resiliency
-  useEffect(() => {
-    const fetchConfigs = async () => {
-      if (!selectedVisao) {
-        setCardConfigs([]);
-        setLineStyles(new Map());
-        return;
-      }
-      try {
-        const currentVisao = visoes.find((vis: Visao) => vis.id === selectedVisao);
-        if (!currentVisao) return;
-
-        // Carrega mais detalhes da visão para direcionar o template correto (por CNPJ raiz, quando existir)
-        const { data: visaoDetails } = await supabase
-          .from('dre_visao')
-          .select('id, cliente_id, cnpj_raiz')
-          .eq('id', selectedVisao)
-          .single();
-
-        const visaoCnpjRaiz: string | null = (visaoDetails as any)?.cnpj_raiz || null;
-
-        // Busca template ativo priorizando o CNPJ raiz da visão (quando informado).
-        // Se não houver match exato por CNPJ, cai no fallback antigo (qualquer template ativo do cliente).
-        let templateQuery = supabase
-          .from('dre_template')
-          .select('id, cliente_cnpj, dre_ativo_sn, created_at')
-          .eq('cliente_id', currentVisao.cliente_id);
-
-        if (visaoCnpjRaiz) {
-          templateQuery = templateQuery.eq('cliente_cnpj', visaoCnpjRaiz);
-        }
-
-        const { data: tmps } = await templateQuery
-          .order('dre_ativo_sn', { ascending: false }) // 'S' vem antes de 'N'
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (!tmps?.length) {
-          setCardConfigs([]);
-          setLineStyles(new Map());
-          return;
-        }
-        
-        const activeTemplateId = tmps[0].id;
-
-        // Busca cards e estilos simultaneamente
-        const [cardsRes, linesRes] = await Promise.all([
-          supabase
-            .from('dre_template_card')
-            .select('*')
-            .eq('dre_template_id', activeTemplateId)
-            .order('crd_posicao'),
-          supabase
-            .from('dre_template_linhas')
-            .select(
-              `dre_linha_seq, tab_estilo_linha ( est_tipg_tela, est_nivel_ident )`
-            )
-            .eq('dre_template_id', activeTemplateId),
-        ]);
-
-        setCardConfigs(cardsRes.data || []);
-        
-        const map = new Map<number, LineStyle>();
-        (linesRes.data || []).forEach((l: any) => {
-          if (l.tab_estilo_linha) {
-            map.set(Number(l.dre_linha_seq), { 
-              seq: Number(l.dre_linha_seq), 
-              tipografia: l.tab_estilo_linha.est_tipg_tela, 
-              indentacao: l.tab_estilo_linha.est_nivel_ident || 0,
-            });
-          }
-        });
-        setLineStyles(map);
-      } catch (e) {
-        console.error("Error loading dashboard configs", e);
-        setCardConfigs([]);
-        setLineStyles(new Map());
-      }
-    };
-    if (activePage === 'dashboard') {
-      fetchConfigs();
-    }
-  }, [activePage, selectedVisao, visoes]);
-
-  // Webhook DRE – com regras mais estritas e abort controller + cache em memória
+  // Configs & Webhook DRE - Parallelized with Timeout and Unified Loading
   useEffect(() => {
     if (activePage !== 'dashboard' || !selectedVisao || !selectedPeriod) {
       return;
@@ -375,77 +292,146 @@ const DashboardPage: React.FC = () => {
 
     const cacheKey = `${selectedVisao}-${selectedPeriod}`;
     const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds timeout
 
-    const fetchData = async () => {
+    const loadDashboardData = async () => {
       setLoading(true);
       setError(null);
       setWarning(null);
 
-      // 1) Tenta do cache primeiro
-      if (dreCacheRef.current[cacheKey]) {
-        const cached = dreCacheRef.current[cacheKey];
-        setRawDreData(cached);
-        if (!cached.length) {
-          setWarning('Sem Dados no Momento');
-        }
-        setLoading(false);
-        return;
-      }
-
       try {
-        const webhookUrl =
-          (import.meta as any).env?.VITE_DRE_WEBHOOK_URL ||
-          'https://webhook.moondog-ia.tech/webhook/dre';
+        // 1. Promise for Configs (Cards & Line Styles)
+        const fetchConfigsPromise = async () => {
+          const { data: visaoDetails, error: visaoError } = await supabase
+            .from('dre_visao')
+            .select('id, cliente_id, cnpj_raiz')
+            .eq('id', selectedVisao)
+            .single();
 
-        const res = await fetch(
-          `${webhookUrl}?carga=${selectedPeriod}&id=${selectedVisao}`,
-          { signal: controller.signal }
-        );
-        const contentType = res.headers.get('content-type') || '';
-        const rawText = await res.text();
+          if (visaoError || !visaoDetails) throw new Error('Visão não encontrada');
 
-        if (!res.ok) {
-          // inclui preview no debug acima (não joga corpo inteiro no console por segurança/perf)
-          throw new Error(`Falha na resposta do servidor (${res.status})`);
+          const visaoCnpjRaiz: string | null = visaoDetails.cnpj_raiz || null;
+
+          let templateQuery = supabase
+            .from('dre_template')
+            .select('id, cliente_cnpj, dre_ativo_sn, created_at')
+            .eq('cliente_id', visaoDetails.cliente_id);
+
+          if (visaoCnpjRaiz) {
+            templateQuery = templateQuery.eq('cliente_cnpj', visaoCnpjRaiz);
+          }
+
+          const { data: tmps } = await templateQuery
+            .order('dre_ativo_sn', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (!tmps?.length) {
+            return { cards: [], styles: new Map<number, LineStyle>() };
+          }
+          
+          const activeTemplateId = tmps[0].id;
+
+          const [cardsRes, linesRes] = await Promise.all([
+            supabase
+              .from('dre_template_card')
+              .select('*')
+              .eq('dre_template_id', activeTemplateId)
+              .order('crd_posicao'),
+            supabase
+              .from('dre_template_linhas')
+              .select(`dre_linha_seq, tab_estilo_linha ( est_tipg_tela, est_nivel_ident )`)
+              .eq('dre_template_id', activeTemplateId),
+          ]);
+
+          const map = new Map<number, LineStyle>();
+          (linesRes.data || []).forEach((l: any) => {
+            if (l.tab_estilo_linha) {
+              map.set(Number(l.dre_linha_seq), { 
+                seq: Number(l.dre_linha_seq), 
+                tipografia: l.tab_estilo_linha.est_tipg_tela, 
+                indentacao: l.tab_estilo_linha.est_nivel_ident || 0,
+              });
+            }
+          });
+
+          return { cards: cardsRes.data || [], styles: map };
+        };
+
+        // 2. Promise for Webhook DRE Data
+        const fetchDrePromise = async () => {
+          if (dreCacheRef.current[cacheKey]) {
+            return dreCacheRef.current[cacheKey];
+          }
+
+          const webhookUrl = (import.meta as any).env?.VITE_DRE_WEBHOOK_URL || 'https://webhook.moondog-ia.tech/webhook/dre';
+
+          const res = await fetch(
+            `${webhookUrl}?carga=${selectedPeriod}&id=${selectedVisao}`,
+            { signal: controller.signal }
+          );
+
+          if (!res.ok) {
+            throw new Error(`Falha na resposta do servidor (${res.status})`);
+          }
+
+          const rawText = await res.text();
+          let parsed: unknown;
+          try {
+            parsed = safeParseJson(rawText);
+          } catch (parseErr) {
+            throw new Error('Resposta do webhook não é um JSON válido');
+          }
+
+          const arr = Array.isArray(parsed) ? parsed : [];
+          dreCacheRef.current[cacheKey] = arr; // Save to cache
+          return arr;
+        };
+
+        // Execute both promises in parallel
+        const [configsResult, dreResult] = await Promise.all([
+          fetchConfigsPromise(),
+          fetchDrePromise()
+        ]);
+
+        if (!controller.signal.aborted) {
+          setCardConfigs(configsResult.cards);
+          setLineStyles(configsResult.styles);
+          setRawDreData(dreResult);
+          
+          if (!dreResult.length) {
+            setWarning('Sem Dados no Momento');
+          }
         }
 
-        let parsed: unknown;
-        try {
-          parsed = safeParseJson(rawText);
-        } catch (parseErr) {
-          throw new Error('Resposta do webhook não é um JSON válido');
-        }
-
-        const arr = Array.isArray(parsed) ? parsed : [];
-
-        // cache em memória (ref) para evitar re-render/loops
-        dreCacheRef.current[cacheKey] = arr;
-
-        setRawDreData(arr);
-        if (!arr.length) {
-          setWarning('Sem Dados no Momento');
-        }
       } catch (e: any) {
         if (e.name === 'AbortError') {
-          return;
+          setError('Tempo limite excedido ao buscar dados do servidor (Timeout).');
+          setWarning('Sem Dados no Momento');
+          setRawDreData([]);
+        } else {
+          console.error('Erro ao carregar dashboard:', e);
+          setRawDreData([]);
+          setWarning('Sem Dados no Momento');
+          setError(
+            e?.message === 'Failed to fetch'
+              ? 'Falha de comunicação com o servidor de DRE.'
+              : `Erro ao carregar dados: ${e.message}`
+          );
         }
-        console.error('Erro ao buscar DRE:', e);
-        setRawDreData([]);
-        setWarning('Sem Dados no Momento');
-        setError(
-          e?.message === 'Failed to fetch'
-            ? 'Falha de comunicação com o servidor de DRE.'
-            : 'Erro ao carregar dados da DRE.'
-        );
       } finally {
-        setLoading(false);
+        clearTimeout(timeoutId);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
 
-    fetchData();
+    loadDashboardData();
 
     return () => {
       controller.abort();
+      clearTimeout(timeoutId);
     };
   }, [activePage, selectedVisao, selectedPeriod]);
 
@@ -545,7 +531,11 @@ const DashboardPage: React.FC = () => {
                         }} disabled={!dreData.length} className="flex items-center whitespace-nowrap px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600"><CsvIcon /> CSV</button>
                     </div>
                   </div>
-                  {cardConfigs.length > 0 && (
+                  {loading ? (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      {Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}
+                    </div>
+                  ) : cardConfigs.length > 0 && (
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                       {cardConfigs.map(cfg => { 
                         const d = processCard(cfg.crd_posicao); 
@@ -554,7 +544,7 @@ const DashboardPage: React.FC = () => {
                     </div>
                   )}
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700">{loading ? <div className="flex flex-col items-center justify-center min-h-[400px]"><div className="w-12 h-12 border-4 border-t-transparent border-indigo-500 rounded-full animate-spin"></div></div> : dreData.length ? <DreTable data={dreData} selectedPeriod={selectedPeriod} /> : <div className="text-center p-8 min-h-[400px] flex flex-col justify-center"><h3 className="text-xl font-bold text-white mb-2">Sem Dados</h3><p className="text-gray-400">Não há registros para os filtros selecionados.</p></div>}</div>
+              <div className="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700">{loading ? <TableSkeleton rows={10} cols={6} /> : dreData.length ? <DreTable data={dreData} selectedPeriod={selectedPeriod} /> : <div className="text-center p-8 min-h-[400px] flex flex-col justify-center"><h3 className="text-xl font-bold text-white mb-2">Sem Dados</h3><p className="text-gray-400">Não há registros para os filtros selecionados.</p></div>}</div>
             </div>
           )}
           {activePage === 'visao' && <VisaoPage />}

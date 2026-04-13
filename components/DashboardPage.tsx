@@ -5,6 +5,7 @@ import { useAuth, ClientContext } from '../contexts/AuthContext';
 import ClientePage from './cliente/ClientePage';
 import EmpresaPage from './empresa/EmpresaPage';
 import PlanoContabilPage from './plano-contabil/PlanoContabilPage';
+import CargaPlanoPage from './plano-contabil/CargaPlanoPage';
 import TemplatePage from './template/TemplatePage';
 import SituacaoPage from './situacao/SituacaoPage';
 import TipoLinhaPage from './tipo-linha/TipoLinhaPage';
@@ -77,7 +78,14 @@ const SancalLogo = () => (
 const navigationData: any[] = [
   { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
   { id: 'analise-modelos', label: 'Análise & Modelos', icon: VisionIcon, children: [{ id: 'visao', label: 'Visões' }, { id: 'templates', label: 'Templates' }] },
-  { id: 'estrutura', label: 'Estrutura', icon: StructureIcon, children: [{ id: 'cliente', label: 'Cliente' }, { id: 'empresa', label: 'Empresa' }, { id: 'plano-contabil', label: 'Plano Contábil' }] },
+  { id: 'estrutura', label: 'Estrutura', icon: StructureIcon, children: [
+    { id: 'cliente', label: 'Cliente' }, 
+    { id: 'empresa', label: 'Empresa' }, 
+    { id: 'menu-plano-contabil', label: 'Plano Contábil', children: [
+      { id: 'plano-contabil', label: 'Visão Plano' },
+      { id: 'carga-plano', label: 'Carga' }
+    ]}
+  ]},
   { id: 'configuracoes', label: 'Configurações', icon: SettingsIcon, children: [{ id: 'situacao', label: 'Situação' }, { id: 'tipo-linha', label: 'Tipo Linha DRE' }, { id: 'estilo-linha', label: 'Estilo Linha DRE' }, { id: 'tipo-visao', label: 'Tipo Visão DRE' }] },
   { id: 'administracao', label: 'Administração', icon: AdminIcon, children: [{ id: 'usuarios', label: 'Usuários' }] },
 ];
@@ -111,7 +119,19 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, acti
               {!isCollapsed && item.children && openMenus[item.id] && (
                 <div className="py-1 pl-2 space-y-1">
                   {item.children.map((child: any) => (
-                    <button key={child.id} onClick={() => setActivePage(child.id)} className={`flex items-center w-full py-2 pl-11 pr-4 text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors ${activePage === child.id ? 'bg-gray-700 text-white' : 'text-gray-400'}`}>{child.label}</button>
+                    <div key={child.id}>
+                      <button onClick={() => child.children ? (!isCollapsed && toggleMenu(child.id)) : setActivePage(child.id)} className={`flex items-center w-full py-2 pl-11 pr-4 text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors ${activePage === child.id ? 'bg-gray-700 text-white' : 'text-gray-400'}`}>
+                        <span className="flex-1 text-left">{child.label}</span>
+                        {!isCollapsed && child.children && (openMenus[child.id] ? <ChevronUpIcon /> : <ChevronDownIcon />)}
+                      </button>
+                      {!isCollapsed && child.children && openMenus[child.id] && (
+                        <div className="py-1 space-y-1">
+                          {child.children.map((grandchild: any) => (
+                            <button key={grandchild.id} onClick={() => setActivePage(grandchild.id)} className={`flex items-center w-full py-2 pl-14 pr-4 text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors ${activePage === grandchild.id ? 'bg-gray-700 text-white' : 'text-gray-400'}`}>{grandchild.label}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -550,6 +570,7 @@ const DashboardPage: React.FC = () => {
           {activePage === 'cliente' && <ClientePage />}
           {activePage === 'empresa' && <EmpresaPage />}
           {activePage === 'plano-contabil' && <PlanoContabilPage />}
+          {activePage === 'carga-plano' && <CargaPlanoPage />}
           {activePage === 'templates' && <TemplatePage />}
           {activePage === 'situacao' && <SituacaoPage />}
           {activePage === 'tipo-linha' && <TipoLinhaPage />}

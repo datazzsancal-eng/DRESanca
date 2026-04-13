@@ -111,54 +111,43 @@ O fluxo de trabalho típico de um usuário no DRE View segue esta sequência:
 
 ---
 
-## 7. Detalhamento Tela a Tela
+## 8. Mecanismos de Autenticação e Gestão de Usuários
 
-### 7.1 Login (`LoginPage.tsx`)
-- **Função:** Ponto de entrada do sistema.
-- **Ações:** Autenticação via Supabase Auth.
-- **Regra:** Usuários sem perfil na tabela `profiles` ou sem permissões na `rel_prof_cli_empr` não conseguirão avançar após o login.
+A segurança e o controle de acesso da aplicação são baseados no ecossistema **Supabase Auth** integrado ao **PostgreSQL RLS (Row Level Security)**.
 
-### 7.2 Seleção de Cliente (`ClientSelectionPage.tsx`)
-- **Função:** Filtro global de contexto.
-- **Ações:** Exibe cards com os nomes dos clientes permitidos.
-- **Regra:** Se o usuário tiver apenas um cliente, o sistema pula esta tela automaticamente.
+### 8.1 Mecanismo de Autenticação
+- **Provedor:** Supabase GoTrue (JWT).
+- **Persistência:** A sessão é armazenada no `localStorage` sob a chave `sb-[project-id]-auth-token`, permitindo que o usuário permaneça logado entre recarregamentos de página.
+- **Contexto Global (`AuthContext.tsx`):**
+    - Utiliza o hook `onAuthStateChange` para escutar eventos de login, logout e atualização de token.
+    - Ao detectar um usuário logado, o contexto busca automaticamente o perfil na tabela `profiles` e a lista de clientes permitidos na tabela `rel_prof_cli_empr`.
+    - **Token JWT:** Todas as requisições feitas via SDK do Supabase incluem automaticamente o cabeçalho `Authorization: Bearer <JWT>`, que é validado pelo banco de dados.
 
-### 7.3 Dashboard (`DashboardPage.tsx`)
-- **Função:** Visualização principal dos dados financeiros.
-- **Componentes:**
-    - **Filtros:** Seleção de Período (Mês/Ano) e Visão (Consolidação).
-    - **Cards de Resumo:** Exibem métricas como Receita, EBITDA e Lucro, comparando com o mês anterior.
-    - **Tabela DRE:** Exibe a estrutura completa do template ativo, com valores mensais, acumulado e análise vertical (%).
-- **Integração:** Chama o webhook `GET /dre` a cada mudança de filtro.
+### 8.2 Gestão de Perfis (`profiles`)
+Diferente do Supabase Auth (que gerencia apenas e-mail/senha), a tabela `profiles` no esquema `public` armazena os dados de negócio:
+- **Sincronização:** O `id` da tabela `profiles` é uma Foreign Key para `auth.users.id`.
+- **Campos:** `full_name`, `username`, `function`, `avatar_url`.
+- **Segurança:** Protegida por RLS. Um usuário comum só pode ler seu próprio perfil ou perfis de outros usuários se houver uma relação de cliente em comum (dependendo da configuração da Policy).
 
-### 7.4 Gestão de Visões (`VisaoPage.tsx`)
-- **Função:** Configurar grupos de empresas.
-- **Fluxo:**
-    - **Lista:** Exibe visões existentes.
-    - **Edição:** Permite definir o tipo de visão. Ao selecionar "CNPJ RAIZ", o sistema lista automaticamente as empresas correspondentes. No tipo "CUSTOMIZADO", abre um componente *Shuttle* para escolha manual.
-- **Regra:** Não permite criar duas visões do mesmo tipo para o mesmo CNPJ Raiz no mesmo cliente.
+### 8.3 Mecanismo de Multi-Tenancy (Isolamento de Dados)
+O isolamento entre diferentes grupos econômicos (Clientes) é garantido por:
+1.  **Filtro de Aplicação:** O `AuthContext` expõe o `selectedClient`. Todos os componentes de página utilizam este ID para filtrar as queries (`.eq('cliente_id', selectedClient.id)`).
+2.  **Segurança no Banco (RLS):** As tabelas críticas possuem políticas que verificam se o `auth.uid()` do usuário logado possui uma entrada correspondente na tabela `rel_prof_cli_empr` para o `cliente_id` do recurso que está sendo acessado.
 
-### 7.5 Gestão de Templates (`TemplatePage.tsx`)
-- **Função:** Desenhar a "espinha dorsal" do DRE.
-- **Fluxo:**
-    - **Edição de Estrutura:** O usuário adiciona linhas, define a sequência, o nível de indentação e o tipo de dado (Conta, Fórmula, etc).
-    - **Busca de Contas:** Ao selecionar o tipo "CONTA", abre um modal de busca que consulta o plano de contas real importado para aquele CNPJ.
-    - **Configuração de Cards:** Define quais linhas do template aparecerão nos 4 cards de destaque do Dashboard.
-- **Visualização:** Botão "Visualizar Estrutura" que simula o relatório final via webhook de preview.
+### 8.4 Fluxo Técnico de Criação de Usuário (Admin)
+Para evitar conflitos de sessão (onde o administrador seria deslogado ao criar um novo usuário), o sistema utiliza um **Cliente Supabase Temporário**:
+1.  O administrador preenche os dados (E-mail, Senha, Nome).
+2.  O sistema instancia um `createClient` com `persistSession: false`.
+3.  É executado o `signUp`.
+4.  Após o sucesso no Auth, o sistema utiliza o cliente administrativo para:
+    - Inserir o registro na tabela `profiles`.
+    - Inserir as permissões na tabela `rel_prof_cli_empr`.
+5.  **Confirmação de E-mail:** Se a configuração "Confirm Email" estiver ativa no Supabase, o usuário receberá um link de ativação antes de conseguir logar.
 
-### 7.6 Carga de Dados (`CargaPlanoPage.tsx`)
-- **Função:** Importação de dados externos.
-- **Fluxo:**
-    - Seleção da Empresa (CNPJ) de destino.
-    - Upload do arquivo (Drag & Drop).
-    - Confirmação de envio.
-- **Regra:** O arquivo é renomeado com um timestamp para evitar sobrescrita e garantir rastreabilidade no Storage.
-
-### 7.7 Gestão de Usuários (`UsuarioPage.tsx`)
-- **Função:** Controle de acesso administrativo.
-- **Fluxo:**
-    - Cadastro de novo usuário (E-mail/Senha).
-    - Atribuição de Clientes.
-    - **Configuração Granular:** Para cada cliente, abre-se uma aba onde o administrador marca quais CNPJs Raiz ou Empresas específicas o usuário pode ver.
-- **Regra:** A exclusão de um usuário remove automaticamente todas as suas permissões de acesso (`rel_prof_cli_empr`).
+### 8.5 Hierarquia de Acesso Granular
+O sistema de permissões na tabela `rel_prof_cli_empr` suporta três níveis de profundidade:
+- **Nível 1 (Acesso ao Cliente):** O usuário vê o nome do cliente na lista de seleção.
+- **Nível 2 (Acesso Total às Empresas):** Se `empresa_id` for `NULL`, o usuário herda acesso a todas as empresas atuais e futuras daquele cliente.
+- **Nível 3 (Acesso Restrito):** O usuário só visualiza e consolida dados das empresas cujos IDs estão explicitamente listados na tabela de relações.
+- **Impacto no Dashboard:** O Dashboard filtra automaticamente os períodos e visões disponíveis com base nessas permissões. Se um usuário tem acesso apenas à "Empresa A", ele não verá visões que consolidam a "Empresa B".
 

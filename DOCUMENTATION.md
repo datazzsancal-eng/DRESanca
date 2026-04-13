@@ -94,26 +94,71 @@ A aplicação se integra com um backend de processamento (n8n) via webhooks.
 
 ---
 
-## 5. Regras de Negócio Críticas
+## 6. Fluxo Esperado da Aplicação
 
-### 5.1 Processamento de Fórmulas no Template
-- As fórmulas nas linhas do template (ex: `L1-L2+L5`) são processadas pelo backend (n8n). 
-- O frontend permite a edição dessas fórmulas, garantindo que o usuário utilize o prefixo `L` seguido do número da sequência da linha.
-- **Validação:** O sistema valida se as linhas referenciadas na fórmula existem no mesmo template.
+O fluxo de trabalho típico de um usuário no DRE View segue esta sequência:
 
-### 5.2 Lógica de Consolidação de Visões
-- **Visão Cliente:** Sempre incluirá novas empresas adicionadas ao cliente automaticamente.
-- **Visão CNPJ Raiz:** Filtra empresas pelo prefixo de 8 dígitos do CNPJ. Se uma nova empresa for cadastrada com o mesmo prefixo, ela é incluída automaticamente na visão.
-- **Visão Grupo:** Permite agrupar múltiplos CNPJs Raiz. Útil para holdings com diferentes ramos de atividade.
-- **Visão Customizada:** É a única que exige manutenção manual ao adicionar novas empresas, pois a relação é fixa por ID de empresa.
+1.  **Autenticação:** O usuário faz login com e-mail e senha.
+2.  **Seleção de Cliente:** Se o usuário tiver acesso a mais de um cliente (Grupo Econômico), ele deve selecionar qual deseja gerenciar.
+3.  **Dashboard Inicial:** O sistema carrega o DRE consolidado baseado na visão padrão do cliente.
+4.  **Configuração (Admin):**
+    -   Define a estrutura do relatório em **Templates**.
+    -   Cria **Visões** para agrupar empresas (Holding, Filiais, etc).
+5.  **Operação:**
+    -   Realiza a **Carga** de arquivos CSV/XLSX com a movimentação contábil.
+    -   O sistema processa os dados via webhook.
+6.  **Análise:** O usuário consulta o Dashboard, filtra por períodos e visões, e exporta os relatórios.
 
-### 5.3 Hierarquia e Estilização do DRE
-- O campo `dre_linha_nivel` define a indentação visual na tabela (Padding Left).
-- Estilos como "Negrito" e "Itálico" são aplicados via classes CSS dinâmicas baseadas na tabela `tab_estilo_linha`.
-- Linhas com `dre_linha_visivel = 'N'` são processadas para fins de cálculo (fórmulas), mas ocultadas na renderização final da tabela para o usuário.
+---
 
-### 5.4 Gestão de Acesso Granular
-- Ao atribuir acesso a um cliente para um usuário, o administrador pode escolher "Acesso Total" ou selecionar empresas específicas.
-- Se o administrador selecionar todas as empresas individualmente, o sistema converte para "Acesso Total" (`empresa_id IS NULL`) para facilitar a manutenção futura (novas empresas serão herdadas automaticamente).
-- O filtro de CNPJ Raiz na tela de usuários é apenas um facilitador de interface; a permissão real é sempre gravada por ID de empresa ou ID de cliente.
+## 7. Detalhamento Tela a Tela
+
+### 7.1 Login (`LoginPage.tsx`)
+- **Função:** Ponto de entrada do sistema.
+- **Ações:** Autenticação via Supabase Auth.
+- **Regra:** Usuários sem perfil na tabela `profiles` ou sem permissões na `rel_prof_cli_empr` não conseguirão avançar após o login.
+
+### 7.2 Seleção de Cliente (`ClientSelectionPage.tsx`)
+- **Função:** Filtro global de contexto.
+- **Ações:** Exibe cards com os nomes dos clientes permitidos.
+- **Regra:** Se o usuário tiver apenas um cliente, o sistema pula esta tela automaticamente.
+
+### 7.3 Dashboard (`DashboardPage.tsx`)
+- **Função:** Visualização principal dos dados financeiros.
+- **Componentes:**
+    - **Filtros:** Seleção de Período (Mês/Ano) e Visão (Consolidação).
+    - **Cards de Resumo:** Exibem métricas como Receita, EBITDA e Lucro, comparando com o mês anterior.
+    - **Tabela DRE:** Exibe a estrutura completa do template ativo, com valores mensais, acumulado e análise vertical (%).
+- **Integração:** Chama o webhook `GET /dre` a cada mudança de filtro.
+
+### 7.4 Gestão de Visões (`VisaoPage.tsx`)
+- **Função:** Configurar grupos de empresas.
+- **Fluxo:**
+    - **Lista:** Exibe visões existentes.
+    - **Edição:** Permite definir o tipo de visão. Ao selecionar "CNPJ RAIZ", o sistema lista automaticamente as empresas correspondentes. No tipo "CUSTOMIZADO", abre um componente *Shuttle* para escolha manual.
+- **Regra:** Não permite criar duas visões do mesmo tipo para o mesmo CNPJ Raiz no mesmo cliente.
+
+### 7.5 Gestão de Templates (`TemplatePage.tsx`)
+- **Função:** Desenhar a "espinha dorsal" do DRE.
+- **Fluxo:**
+    - **Edição de Estrutura:** O usuário adiciona linhas, define a sequência, o nível de indentação e o tipo de dado (Conta, Fórmula, etc).
+    - **Busca de Contas:** Ao selecionar o tipo "CONTA", abre um modal de busca que consulta o plano de contas real importado para aquele CNPJ.
+    - **Configuração de Cards:** Define quais linhas do template aparecerão nos 4 cards de destaque do Dashboard.
+- **Visualização:** Botão "Visualizar Estrutura" que simula o relatório final via webhook de preview.
+
+### 7.6 Carga de Dados (`CargaPlanoPage.tsx`)
+- **Função:** Importação de dados externos.
+- **Fluxo:**
+    - Seleção da Empresa (CNPJ) de destino.
+    - Upload do arquivo (Drag & Drop).
+    - Confirmação de envio.
+- **Regra:** O arquivo é renomeado com um timestamp para evitar sobrescrita e garantir rastreabilidade no Storage.
+
+### 7.7 Gestão de Usuários (`UsuarioPage.tsx`)
+- **Função:** Controle de acesso administrativo.
+- **Fluxo:**
+    - Cadastro de novo usuário (E-mail/Senha).
+    - Atribuição de Clientes.
+    - **Configuração Granular:** Para cada cliente, abre-se uma aba onde o administrador marca quais CNPJs Raiz ou Empresas específicas o usuário pode ver.
+- **Regra:** A exclusão de um usuário remove automaticamente todas as suas permissões de acesso (`rel_prof_cli_empr`).
 

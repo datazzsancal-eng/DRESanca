@@ -75,7 +75,7 @@ A aplicação se integra com um backend de processamento (n8n) via webhooks.
     ```
 
 ### 3.2 Carga de Dados CSV
-- **Endpoint:** `POST https://webhook.moondog-ia.tech/webhook/csv-upsert`
+- **Endpoint:** `POST https://webhook.synapiens.com.br/webhook/csv-upsert`
 - **Payload:**
     ```json
     {

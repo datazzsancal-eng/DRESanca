@@ -176,6 +176,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
         console.error("Get session error:", error);
+        if (error.message?.includes('Refresh Token Not Found') || error.message?.includes('Invalid Refresh Token')) {
+           // Clear local session data to force re-login
+           supabase.auth.signOut().catch(console.error);
+           setSession(null);
+           setUser(null);
+           setProfile(null);
+           setAvailableClients([]);
+           setSelectedClientState(null);
+           localStorage.removeItem('dre_selected_client');
+        }
         if (mounted) setLoading(false);
         return;
       }

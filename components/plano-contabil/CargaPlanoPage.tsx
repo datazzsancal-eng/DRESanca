@@ -135,13 +135,18 @@ const CargaPlanoPage: React.FC = () => {
       const savedPath = uploadData?.path || filePath;
 
       // Dispara o webhook para processar a carga
-      const webhookUrl = (import.meta as any).env?.VITE_CARGA_WEBHOOK_URL || 'https://webhook.moondog-ia.tech/webhook/csv-upsert';
+      const webhookUrl = (import.meta as any).env?.VITE_CARGA_WEBHOOK_URL || 'https://webhook.synapiens.com.br/webhook/csv-upsert';
       
+      const selectedEmpresa = empresasRaiz.find(e => e.cnpj_raiz === selectedCnpjRaiz);
+
       const payload = {
         file_path: savedPath,
         bucket: "conta_upload",
         table: "dre_plano_contabil",
-        on_conflict: "id"
+        on_conflict: "id",
+        cliente_id: selectedClient.id,
+        emp_nome_reduzido: selectedEmpresa?.reduz_emp || null,
+        cnpj_raiz: selectedCnpjRaiz
       };
 
       let webhookRes;

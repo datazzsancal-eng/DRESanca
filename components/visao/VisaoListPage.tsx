@@ -43,7 +43,7 @@ const CompanyIcon = () => (
 
 
 const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) => {
-  const { user, selectedClient } = useAuth();
+  const { user, selectedClient, profile } = useAuth();
   
   const [visoes, setVisoes] = useState<Visao[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,27 +60,31 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
     setLoading(true);
     setError(null);
     try {
-      // 1. Fetch User Permissions specifically for the Selected Client
-      const { data: relData, error: relError } = await supabase
-        .from('rel_prof_cli_empr')
-        .select('empresa_id')
-        .eq('profile_id', user.id)
-        .eq('cliente_id', selectedClient.id) // Filter permissions by selected client
-        .eq('rel_situacao_id', 'ATV');
-
-      if (relError) throw relError;
-
       let hasFullAccess = false;
       const allowedCompanyIds = new Set<string>();
 
-      if (relData) {
-          relData.forEach((r: any) => {
-              if (r.empresa_id === null) {
-                  hasFullAccess = true;
-              } else {
-                  allowedCompanyIds.add(r.empresa_id);
-              }
-          });
+      if (profile?.function === 'MASTER') {
+          hasFullAccess = true;
+      } else {
+          // 1. Fetch User Permissions specifically for the Selected Client
+          const { data: relData, error: relError } = await supabase
+            .from('rel_prof_cli_empr')
+            .select('empresa_id')
+            .eq('profile_id', user.id)
+            .eq('cliente_id', selectedClient.id) // Filter permissions by selected client
+            .eq('rel_situacao_id', 'ATV');
+
+          if (relError) throw relError;
+
+          if (relData) {
+              relData.forEach((r: any) => {
+                  if (r.empresa_id === null) {
+                      hasFullAccess = true;
+                  } else {
+                      allowedCompanyIds.add(r.empresa_id);
+                  }
+              });
+          }
       }
 
       // If no access found for this specific client (should imply an app logic error if selectedClient is valid), assume no access

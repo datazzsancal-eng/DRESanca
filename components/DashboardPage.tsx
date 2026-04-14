@@ -6,6 +6,7 @@ import ClientePage from './cliente/ClientePage';
 import EmpresaPage from './empresa/EmpresaPage';
 import PlanoContabilPage from './plano-contabil/PlanoContabilPage';
 import CargaPlanoPage from './plano-contabil/CargaPlanoPage';
+import CargaMovimentoPage from './movimentacoes/CargaMovimentoPage';
 import TemplatePage from './template/TemplatePage';
 import SituacaoPage from './situacao/SituacaoPage';
 import TipoLinhaPage from './tipo-linha/TipoLinhaPage';
@@ -15,6 +16,8 @@ import VisaoPage from './visao/VisaoPage';
 import UsuarioPage from './usuario/UsuarioPage';
 import { TableSkeleton, CardSkeleton } from './shared/Skeleton';
 import * as XLSX from 'xlsx';
+import appMetadata from '../app_metadata.json';
+import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 
 // Type definitions
 interface Periodo { retorno: number; display: string; }
@@ -70,47 +73,75 @@ const MenuIcon = () => <Icon path="M4 6h16M4 12h16M4 18h16" />;
 const CloseIcon = () => <Icon path="M6 18L18 6M6 6l12 12" />;
 const ChevronDoubleLeftIcon = () => <Icon path="M11 17l-5-5 5-5M18 17l-5-5 5-5" className="h-5 w-5"/>;
 const ChevronDoubleRightIcon = () => <Icon path="M13 17l5-5-5-5M6 17l5-5-5-5" className="h-5 w-5"/>;
+const KeyIcon = () => <Icon path="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" className="h-4 w-4" />;
 
 const SancalLogo = () => (
   <img src="https://www.sancal.com.br/wp-content/uploads/elementor/thumbs/logo-white-qfydekyggou3snwsfrlsc913ym97p1hveemqwoinls.png" alt="Sancal Logo" className="h-8 w-auto"/>
 );
 
 const navigationData: any[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
-  { id: 'analise-modelos', label: 'Análise & Modelos', icon: VisionIcon, children: [{ id: 'visao', label: 'Visões' }, { id: 'templates', label: 'Templates' }] },
-  { id: 'estrutura', label: 'Estrutura', icon: StructureIcon, children: [
-    { id: 'cliente', label: 'Cliente' }, 
-    { id: 'empresa', label: 'Empresa' }, 
+  { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR', 'LEITOR'] },
+  { id: 'movimentacoes', label: 'Movimentações', icon: () => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR'], children: [
+    { id: 'carga-movimento', label: 'Carga de Movimento' }
+  ]},
+  { id: 'analise-modelos', label: 'Análise & Modelos', icon: VisionIcon, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA'], children: [{ id: 'visao', label: 'Visões' }, { id: 'templates', label: 'Templates' }] },
+  { id: 'estrutura', label: 'Estrutura', icon: StructureIcon, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR'], children: [
+    { id: 'cliente', label: 'Cliente', roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN'] }, 
+    { id: 'empresa', label: 'Empresa', roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA'] }, 
     { id: 'menu-plano-contabil', label: 'Plano Contábil', children: [
       { id: 'plano-contabil', label: 'Visão Plano' },
       { id: 'carga-plano', label: 'Carga' }
     ]}
   ]},
-  { id: 'configuracoes', label: 'Configurações', icon: SettingsIcon, children: [{ id: 'situacao', label: 'Situação' }, { id: 'tipo-linha', label: 'Tipo Linha DRE' }, { id: 'estilo-linha', label: 'Estilo Linha DRE' }, { id: 'tipo-visao', label: 'Tipo Visão DRE' }] },
-  { id: 'administracao', label: 'Administração', icon: AdminIcon, children: [{ id: 'usuarios', label: 'Usuários' }] },
+  { id: 'configuracoes', label: 'Configurações', icon: SettingsIcon, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN'], children: [{ id: 'situacao', label: 'Situação' }, { id: 'tipo-linha', label: 'Tipo Linha DRE' }, { id: 'estilo-linha', label: 'Estilo Linha DRE' }, { id: 'tipo-visao', label: 'Tipo Visão DRE' }] },
+  { id: 'administracao', label: 'Administração', icon: AdminIcon, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN'], children: [{ id: 'usuarios', label: 'Usuários' }] },
 ];
 
 interface SidebarProps {
-  isSidebarOpen: boolean; setIsSidebarOpen: (isOpen: boolean) => void; activePage: string; setActivePage: (page: string) => void; isCollapsed: boolean; onToggleCollapse: () => void; selectedClient: ClientContext | null; onChangeClient: () => void;
+  isSidebarOpen: boolean; setIsSidebarOpen: (isOpen: boolean) => void; activePage: string; setActivePage: (page: string) => void; isCollapsed: boolean; onToggleCollapse: () => void; selectedClient: ClientContext | null; onChangeClient: () => void; userRole: string | null;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, activePage, setActivePage, isCollapsed, onToggleCollapse, selectedClient, onChangeClient }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, activePage, setActivePage, isCollapsed, onToggleCollapse, selectedClient, onChangeClient, userRole }) => {
   const [openMenus, setOpenMenus] = useState<{ [key: string]: boolean }>({ 'analise-modelos': true, estrutura: true });
   useEffect(() => { if (isCollapsed) setOpenMenus({}); }, [isCollapsed]);
   const toggleMenu = (id: string) =>
     setOpenMenus((prev: { [key: string]: boolean }) => ({ ...prev, [id]: !prev[id] }));
   const getNavItemClasses = (p: string) => `flex items-center w-full py-2.5 text-sm font-medium rounded-lg transition-colors ${isCollapsed ? 'justify-center px-2' : 'px-4'} ${activePage === p ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700'}`;
 
+  const filteredNav = useMemo(() => {
+    const filterItems = (items: any[]): any[] => {
+      return items
+        .filter(item => !item.roles || (userRole && item.roles.includes(userRole)))
+        .map(item => {
+          if (item.children) {
+            return { ...item, children: filterItems(item.children) };
+          }
+          return item;
+        })
+        .filter(item => !item.children || item.children.length > 0);
+    };
+    return filterItems(navigationData);
+  }, [userRole]);
+
   return (
     <>
       <div className={`fixed inset-0 z-30 bg-black bg-opacity-50 lg:hidden ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsSidebarOpen(false)}></div>
-      <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-800 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-800 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'} relative`}>
+        {/* Floating Toggle Button */}
+        <button 
+          onClick={onToggleCollapse}
+          className="hidden lg:flex absolute -right-3 top-20 z-50 items-center justify-center w-6 h-6 bg-gray-700 border border-gray-600 rounded-full text-gray-300 hover:text-white hover:bg-gray-600 transition-all shadow-md"
+          title={isCollapsed ? "Expandir" : "Recolher"}
+        >
+          {isCollapsed ? <ChevronDoubleRightIcon /> : <ChevronDoubleLeftIcon />}
+        </button>
+
         <div className={`flex items-center h-16 px-4 border-b border-gray-700 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
           {!isCollapsed ? <SancalLogo /> : <DashboardIcon />}
           <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}><CloseIcon /></button>
         </div>
         <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-          {navigationData.map((item: any) => (
+          {filteredNav.map((item: any) => (
             <div key={item.id}>
               <button onClick={() => item.children ? (!isCollapsed && toggleMenu(item.id)) : setActivePage(item.id)} className={getNavItemClasses(item.id)} title={isCollapsed ? item.label : ''}>
                 <div className="flex items-center"><item.icon />{!isCollapsed && <span className="ml-3">{item.label}</span>}</div>
@@ -146,7 +177,19 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, acti
             </div>
           )}
           {isCollapsed && <button onClick={onChangeClient} className="flex justify-center w-full p-2 text-gray-400 hover:bg-gray-600 rounded-lg"><SwitchIcon /></button>}
-           <button onClick={onToggleCollapse} className={`hidden lg:flex items-center w-full p-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-gray-600 ${isCollapsed ? 'justify-center' : ''}`}>{isCollapsed ? <ChevronDoubleRightIcon /> : <ChevronDoubleLeftIcon />}{!isCollapsed && <span className="ml-2">Recolher</span>}</button>
+          
+          <div className={`flex flex-col items-center pt-2 border-t border-gray-700/50 mt-1 ${isCollapsed ? 'px-1' : 'px-2'}`}>
+            <img 
+              src="https://raw.githubusercontent.com/synapiens/uteis/refs/heads/main/LogoSynapiens/Synapiens_logo_hor.png" 
+              alt="Synapiens" 
+              className={`${isCollapsed ? 'h-4 w-auto' : 'h-7 w-auto'}`}
+            />
+            {!isCollapsed && (
+              <span className="text-[10px] text-gray-500 mt-1 font-mono">
+                {appMetadata.app_version}
+              </span>
+            )}
+          </div>
         </div>
       </aside>
     </>
@@ -237,7 +280,25 @@ const DashboardPage: React.FC = () => {
   const [selectedVisao, setSelectedVisao] = useState<string>('');
   const [cardConfigs, setCardConfigs] = useState<CardConfig[]>([]);
   const [lineStyles, setLineStyles] = useState<Map<number, LineStyle>>(new Map());
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordData, setPasswordData] = useState({ current: '', new: '', confirm: '' });
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const dreCacheRef = useRef<Record<string, any[]>>({});
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close user menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Dropdowns (Períodos e Visões) – regras otimizadas
   useEffect(() => {
@@ -257,17 +318,24 @@ const DashboardPage: React.FC = () => {
           setSelectedPeriod((prev: number | '') => (prev === '' ? Number(pData[0].retorno) : prev));
         }
 
-        const { data: relData } = await supabase
-          .from('rel_prof_cli_empr')
-          .select('empresa_id')
-          .eq('profile_id', user.id)
-          .eq('cliente_id', selectedClient.id)
-          .eq('rel_situacao_id', 'ATV');
+        let hasFull = false;
+        let allowedIds = new Set<string>();
 
-        const hasFull = relData?.some((r: any) => r.empresa_id === null);
-        const allowedIds = new Set(
-          relData?.map((r: any) => r.empresa_id).filter(Boolean)
-        );
+        if (profile?.function === 'MASTER') {
+            hasFull = true;
+        } else {
+            const { data: relData } = await supabase
+              .from('rel_prof_cli_empr')
+              .select('empresa_id')
+              .eq('profile_id', user.id)
+              .eq('cliente_id', selectedClient.id)
+              .eq('rel_situacao_id', 'ATV');
+
+            hasFull = relData?.some((r: any) => r.empresa_id === null) ?? false;
+            allowedIds = new Set(
+              relData?.map((r: any) => r.empresa_id).filter(Boolean)
+            );
+        }
 
         const { data: vData } = await supabase
           .from('dre_visao')
@@ -383,7 +451,7 @@ const DashboardPage: React.FC = () => {
             return dreCacheRef.current[cacheKey];
           }
 
-          const webhookUrl = (import.meta as any).env?.VITE_DRE_WEBHOOK_URL || 'https://webhook.moondog-ia.tech/webhook/dre';
+          const webhookUrl = (import.meta as any).env?.VITE_DRE_WEBHOOK_URL || 'https://webhook.synapiens.com.br/webhook/dre_busca';
 
           const res = await fetch(
             `${webhookUrl}?carga=${selectedPeriod}&id=${selectedVisao}`,
@@ -456,6 +524,12 @@ const DashboardPage: React.FC = () => {
 
   // Processing Table Data
   useEffect(() => {
+    if (profile?.function === 'LEITOR' && activePage !== 'dashboard') {
+      setActivePage('dashboard');
+    }
+  }, [profile?.function, activePage]);
+
+  useEffect(() => {
     if (!rawDreData.length) { setDreData([]); return; }
     
     // Filtra pela visão atual para garantir que não pegamos lixo de outras visões (se o webhook retornar multi-contexto)
@@ -512,13 +586,87 @@ const DashboardPage: React.FC = () => {
 
   const getInitials = (n: any) => { if (!n) return 'U'; const p = String(n).trim().split(' '); return p.length === 1 ? p[0].substring(0, 2).toUpperCase() : (p[0][0] + p[p.length - 1][0]).toUpperCase(); };
 
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(null);
+
+    if (passwordData.new !== passwordData.confirm) {
+      setPasswordError("A nova senha e a confirmação não coincidem.");
+      return;
+    }
+
+    if (passwordData.new.length < 6) {
+      setPasswordError("A nova senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      // Verify current password by attempting to sign in again
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user?.email || '',
+        password: passwordData.current
+      });
+
+      if (signInError) {
+        throw new Error("A senha atual está incorreta.");
+      }
+
+      const { error } = await supabase.auth.updateUser({ password: passwordData.new });
+      if (error) throw error;
+      setPasswordSuccess("Senha alterada com sucesso!");
+      setPasswordData({ current: '', new: '', confirm: '' });
+      setTimeout(() => setIsPasswordModalOpen(false), 2000);
+    } catch (err: any) {
+      setPasswordError(err.message);
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-900 text-gray-300">
-      <Sidebar isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} activePage={activePage} setActivePage={setActivePage} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} selectedClient={selectedClient} onChangeClient={() => selectClient(null)} />
+      <Sidebar isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} activePage={activePage} setActivePage={setActivePage} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} selectedClient={selectedClient} onChangeClient={() => selectClient(null)} userRole={profile?.function || null} />
       <div className="flex flex-col flex-1 w-full overflow-y-auto">
         <header className="flex items-center justify-between h-16 px-6 bg-gray-800 border-b border-gray-700 sticky top-0 z-20">
             <div className="flex items-center"><button className="lg:hidden mr-4" onClick={() => setIsSidebarOpen(true)}><MenuIcon /></button><h1 className="text-xl font-semibold text-white">{activePage === 'dashboard' ? 'Dashboard' : 'Gestão'}</h1></div>
-            <div className="flex items-center gap-4"><div className="hidden md:block text-right"><p className="text-sm font-bold text-white leading-tight">{profile?.full_name || 'Usuário'}</p><p className="text-xs text-gray-400">{user?.email}</p></div><div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold border border-indigo-500">{getInitials(profile?.full_name)}</div><div className="border-l border-gray-600 h-8 mx-2"></div><button onClick={signOut} className="p-2 text-gray-300 hover:text-red-400 group"><LogoutIcon /></button></div>
+            <div className="flex items-center gap-4">
+              <div className="relative" ref={userMenuRef}>
+                <button 
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="flex items-center gap-3 hover:bg-gray-700 p-1.5 rounded-lg transition-colors"
+                >
+                  <div className="hidden md:block text-right">
+                    <p className="text-sm font-bold text-white leading-tight">{profile?.full_name || 'Usuário'}</p>
+                    <p className="text-xs text-gray-400">{user?.email}</p>
+                  </div>
+                  <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold border border-indigo-500">
+                    {getInitials(profile?.full_name)}
+                  </div>
+                </button>
+
+                {isUserMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                    <button 
+                      onClick={() => { setIsPasswordModalOpen(true); setIsUserMenuOpen(false); }}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                    >
+                      <KeyIcon />
+                      <span className="ml-3">Troca de senha</span>
+                    </button>
+                    <div className="border-t border-gray-700 my-1"></div>
+                    <button 
+                      onClick={signOut}
+                      className="flex items-center w-full px-4 py-2 text-sm text-red-400 hover:bg-red-900/20 hover:text-red-300 transition-colors"
+                    >
+                      <LogoutIcon />
+                      <span className="ml-3 font-medium">Sair</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
         </header>
         <main className="p-4">
           {activePage === 'dashboard' && (
@@ -571,6 +719,7 @@ const DashboardPage: React.FC = () => {
           {activePage === 'empresa' && <EmpresaPage />}
           {activePage === 'plano-contabil' && <PlanoContabilPage />}
           {activePage === 'carga-plano' && <CargaPlanoPage />}
+          {activePage === 'carga-movimento' && <CargaMovimentoPage />}
           {activePage === 'templates' && <TemplatePage />}
           {activePage === 'situacao' && <SituacaoPage />}
           {activePage === 'tipo-linha' && <TipoLinhaPage />}
@@ -579,6 +728,91 @@ const DashboardPage: React.FC = () => {
           {activePage === 'usuarios' && <UsuarioPage />}
         </main>
       </div>
+
+      {/* Password Change Modal */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-gray-700 flex justify-between items-center bg-gray-800/50">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <KeyIcon /> Troca de Senha
+              </h3>
+              <button 
+                onClick={() => setIsPasswordModalOpen(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            
+            <form onSubmit={handlePasswordChange} className="p-6 space-y-4">
+              {passwordError && (
+                <div className="p-3 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" /> {passwordError}
+                </div>
+              )}
+              {passwordSuccess && (
+                <div className="p-3 text-sm text-green-400 bg-green-900/20 border border-green-800 rounded-lg flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" /> {passwordSuccess}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Senha Atual</label>
+                  <input 
+                    type="password"
+                    required
+                    value={passwordData.current}
+                    onChange={(e) => setPasswordData({ ...passwordData, current: e.target.value })}
+                    className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    placeholder="Sua senha atual"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Nova Senha</label>
+                  <input 
+                    type="password"
+                    required
+                    value={passwordData.new}
+                    onChange={(e) => setPasswordData({ ...passwordData, new: e.target.value })}
+                    className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    placeholder="Mínimo 6 caracteres"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Confirmar Nova Senha</label>
+                  <input 
+                    type="password"
+                    required
+                    value={passwordData.confirm}
+                    onChange={(e) => setPasswordData({ ...passwordData, confirm: e.target.value })}
+                    className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    placeholder="Repita a nova senha"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setIsPasswordModalOpen(false)}
+                  className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-lg transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  disabled={passwordLoading || !!passwordSuccess}
+                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2"
+                >
+                  {passwordLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Alterar Senha'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

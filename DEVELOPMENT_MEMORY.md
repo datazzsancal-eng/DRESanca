@@ -1,0 +1,91 @@
+# Development Memory - DRE View
+
+Este documento registra o histórico de decisões técnicas, mudanças significativas e marcos do desenvolvimento do projeto DRE View.
+
+## Sessão: Refinamento de Gestão de Usuários e Controle de Acesso (Abril 2024)
+
+### Objetivo
+Aprimorar a interface de gestão de usuários, implementar regras de acesso dinâmicas para diferentes funções e corrigir falhas de comunicação com o servidor de DRE.
+
+### Mudanças Implementadas
+
+#### 1. Gestão de Usuários (UsuarioPage.tsx)
+- **Unificação de Login/E-mail:** O campo "Usuário (Login)" foi ocultado. O sistema agora sincroniza automaticamente o `username` com o `email`.
+- **E-mail Read-only:** Em modo de edição, o e-mail não pode ser alterado para garantir a integridade da conta no Supabase Auth.
+- **Reordenamento de Campos:** Formulário reorganizado para seguir a ordem: E-mail, Função, Nome Completo, Senhas.
+- **Gestão de Senhas:**
+    - Implementado toggle de visibilidade (Eye/EyeOff) para todos os campos de senha.
+    - Adicionada validação de coincidência entre "Senha" e "Confirmação".
+    - Para edições, agora é obrigatório fornecer a "Senha Atual" para validar qualquer alteração de senha, realizando uma re-autenticação em tempo real.
+- **Remoção do campo Bio:** O campo `bio` foi removido do perfil do usuário por não ser necessário.
+- **Restrição de Atribuição de Funções:** Usuários `GESTOR CLIENTE` agora só podem atribuir funções até o seu próprio nível hierárquico.
+
+#### 2. Controle de Acesso e Menu Dinâmico
+- **Menu Filtrado:** O Sidebar agora filtra os itens de navegação com base na função do usuário. Usuários `LEITOR` têm acesso apenas ao Dashboard.
+- **Redirecionamento de Segurança:** Implementada lógica no `DashboardPage.tsx` para redirecionar usuários `LEITOR` que tentarem acessar rotas administrativas manualmente.
+- **Acesso Automático ADMIN:** Usuários com função `ADMIN` agora recebem acesso automático a todas as empresas dos clientes que eles mesmos criarem.
+
+#### 3. Melhorias em Clientes e Empresas
+- **Campos de Restrição:** Adicionados `cli_restrito_sn` (Clientes) e `emp_restrito_sn` (Empresas). Estes campos são visíveis e editáveis apenas por usuários `MASTER` e `GESTOR CLIENTE`.
+- **Auto-associação:** Ao criar um novo cliente, o usuário criador é automaticamente associado a ele na tabela `rel_prof_cli_empr`.
+
+#### 4. Integrações e Infraestrutura
+- **Atualização de Webhook:** O endpoint do DRE foi alterado para `https://webhook.synapiens.com.br/webhook/dre_busca` para resolver erros de comunicação.
+- **Versão da App:** A versão da aplicação (vinda do `app_metadata.json`) agora é exibida na tela de login.
+
+### Dependências Adicionadas
+- `lucide-react`: Para ícones de visibilidade de senha.
+- `motion/react` (Framer Motion): Para animações de feedback e transições de interface.
+
+### Decisões Técnicas
+- **Uso de Cliente Temporário no Supabase:** Para criar usuários sem deslogar o administrador atual, foi utilizado um cliente Supabase secundário com `persistSession: false`.
+- **Validação de Senha Atual:** Optou-se por realizar um `signInWithPassword` temporário para validar a senha atual antes de permitir o `updateUser`, garantindo que apenas o dono da conta (ou alguém com a senha) possa alterá-la.
+
+## Sessão: Módulo de Movimentações e Carga Mensal (Abril 2024)
+
+### Objetivo
+Implementar a funcionalidade de carga de movimentos mensais por empresa, permitindo o processamento de dados transacionais para o DRE.
+
+### Mudanças Implementadas
+- **Novo Menu "Movimentações":** Adicionado à Sidebar com a sub-página "Carga de Movimento".
+- **Página de Carga (CargaMovimentoPage.tsx):**
+    - Seleção de Empresa: Combo populado com empresas permitidas para o usuário no cliente selecionado.
+    - Seleção de Período: Combos de Mês (1-12) e Ano (Corrente/Anterior), com valores padrão baseados na data atual.
+    - Área de Upload: Componente com suporte a Drag & Drop e seleção de arquivo, visualmente consistente com a carga de plano.
+- **Integração de Backend:**
+    - Bucket Storage: Utilizado o bucket `movimento_upload`.
+    - Webhook: Disparo para `https://webhook.synapiens.com.br/webhook/movimento-upsert` com metadados do período e empresa.
+- **Navegação:** Atualizado o `DashboardPage.tsx` para incluir a nova rota e item de menu.
+
+## Sessão: Refinamento de RBAC por Função (Abril 2024)
+
+### Objetivo
+Ajustar as permissões de acesso aos menus para as funções `GESTOR CONTA` e `COLABORADOR`, restringindo o acesso a cadastros estruturais e configurações.
+
+### Mudanças Implementadas
+- **Refinamento de Menus (DashboardPage.tsx):**
+    - **GESTOR CONTA:** Removido acesso ao CRUD de Cliente e ao menu de Configurações.
+    - **COLABORADOR:** Removido acesso ao CRUD de Cliente, CRUD de Empresa, menu de Análise & Modelos (Visões/Templates) e menu de Configurações.
+- **Lógica de Filtragem Recursiva:** O componente `Sidebar` agora utiliza uma função recursiva para filtrar itens de menu e seus submenus, garantindo que categorias vazias (sem filhos permitidos) não sejam exibidas.
+
+## Sessão: Ajuste de UI da Sidebar (Abril 2024)
+
+### Objetivo
+Melhorar a experiência de usuário na barra lateral, substituindo o botão de recolher do rodapé por um botão flutuante na borda.
+
+### Mudanças Implementadas
+- **Novo Botão de Toggle:** Adicionado um botão circular flutuante na borda direita da Sidebar (`-right-3 top-20`).
+- **Remoção do Rodapé:** A opção "Recolher" foi removida do rodapé da Sidebar para limpar a interface.
+- **Preservação de Estilo:** Cores e ícones originais foram mantidos para consistência visual.
+- **Identidade Visual no Rodapé:** Adicionada a logo da Synapiens e a identificação da versão da aplicação no rodapé da Sidebar, substituindo o antigo botão de recolher.
+
+## Sessão: Menu de Usuário e Troca de Senha (Abril 2024)
+
+### Objetivo
+Implementar um menu dropdown no header ao clicar no nome do usuário, oferecendo opções de troca de senha e logout.
+
+### Mudanças Implementadas
+- **Menu Dropdown no Header:** O nome do usuário agora é um gatilho para um menu "drill down" contendo as opções "Troca de senha" e "Sair".
+- **Modal de Troca de Senha:** Implementado um modal que solicita a senha atual, nova senha e confirmação. A senha atual é validada via re-autenticação no Supabase antes da atualização.
+- **Logout Integrado:** A opção de logout foi movida para dentro do menu do usuário, mantendo a funcionalidade de encerramento de sessão.
+- **Melhoria de UX:** Adicionado fechamento automático do menu ao clicar fora dele e animações de entrada para o dropdown e modal.

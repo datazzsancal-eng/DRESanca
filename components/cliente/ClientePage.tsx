@@ -15,10 +15,11 @@ interface Cliente {
   cliente_id: string;
   cli_nome: string | null;
   cli_situacao: number | null;
+  cli_restrito_sn: string;
 }
 
 const ClientePage: React.FC = () => {
-  const { user, refreshClients } = useAuth();
+  const { user, profile, refreshClients } = useAuth();
   // State management
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [situacoes, setSituacoes] = useState<Situacao[]>([]);
@@ -29,17 +30,48 @@ const ClientePage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
-  const [formData, setFormData] = useState({ cliente_id: '', cli_nome: '', cli_situacao: '' });
+  const [formData, setFormData] = useState({ cliente_id: '', cli_nome: '', cli_situacao: '', cli_restrito_sn: 'N' });
 
   // Filter state
   const [filtroNome, setFiltroNome] = useState('');
 
   // Data fetching
   const fetchData = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     setError(null);
     try {
+      let allowedClientIds: string[] = [];
+      let hasFullAccess = false;
+
+      if (profile?.function === 'MASTER') {
+        hasFullAccess = true;
+      } else {
+        const { data: relData, error: relError } = await supabase
+          .from('rel_prof_cli_empr')
+          .select('cliente_id')
+          .eq('profile_id', user.id)
+          .eq('rel_situacao_id', 'ATV')
+          .not('cliente_id', 'is', null);
+
+        if (relError) throw relError;
+        if (relData) {
+          allowedClientIds = Array.from(new Set(relData.map((r: any) => r.cliente_id)));
+        }
+      }
+
+      if (!hasFullAccess && allowedClientIds.length === 0) {
+        setClientes([]);
+        setLoading(false);
+        return;
+      }
+
       let clientesQuery = supabase.from('dre_cliente').select('*');
+      
+      if (!hasFullAccess) {
+        clientesQuery = clientesQuery.in('id', allowedClientIds);
+      }
+
       if (filtroNome) {
         clientesQuery = clientesQuery.ilike('cli_nome', `%${filtroNome}%`);
       }
@@ -62,7 +94,7 @@ const ClientePage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filtroNome]);
+  }, [filtroNome, user, profile]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -78,6 +110,7 @@ const ClientePage: React.FC = () => {
       cliente_id: cliente?.cliente_id || '',
       cli_nome: cliente?.cli_nome || '',
       cli_situacao: cliente?.cli_situacao?.toString() || '',
+      cli_restrito_sn: cliente?.cli_restrito_sn || 'N',
     });
     setIsModalOpen(true);
   };
@@ -100,22 +133,29 @@ const ClientePage: React.FC = () => {
 
   // CRUD operations
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    let finalValue = value;
-    if ('type' in e.target && e.target.type === 'text') {
-        finalValue = value.toUpperCase();
+    const { name, value, type } = e.target;
+    
+    if (type === 'checkbox') {
+        const { checked } = e.target as HTMLInputElement;
+        setFormData(prev => ({ ...prev, [name]: checked ? 'S' : 'N' }));
+    } else {
+        let finalValue = value;
+        if (type === 'text') {
+            finalValue = value.toUpperCase();
+        }
+        setFormData(prev => ({ ...prev, [name]: finalValue }));
     }
-    setFormData(prev => ({ ...prev, [name]: finalValue }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { cliente_id, cli_nome, cli_situacao } = formData;
+    const { cliente_id, cli_nome, cli_situacao, cli_restrito_sn } = formData;
     
     const payload = {
         cliente_id,
         cli_nome: cli_nome || null,
         cli_situacao: cli_situacao ? parseInt(cli_situacao, 10) : null,
+        cli_restrito_sn: cli_restrito_sn || 'N',
     };
 
     let error;
@@ -267,12 +307,28 @@ const ClientePage: React.FC = () => {
                 <label htmlFor="cli_nome" className="block text-sm font-medium text-gray-300">Nome do Cliente</label>
                 <input type="text" name="cli_nome" id="cli_nome" value={formData.cli_nome} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
             </div>
-            <div>
-                <label htmlFor="cli_situacao" className="block text-sm font-medium text-gray-300">Situação</label>
-                <select name="cli_situacao" id="cli_situacao" value={formData.cli_situacao} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
-                    <option value="">Selecione uma situação</option>
-                    {situacoes.map(s => <option key={s.id} value={s.id}>{s.sit_desc}</option>)}
-                </select>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label htmlFor="cli_situacao" className="block text-sm font-medium text-gray-300">Situação</label>
+                    <select name="cli_situacao" id="cli_situacao" value={formData.cli_situacao} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">Selecione uma situação</option>
+                        {situacoes.map(s => <option key={s.id} value={s.id}>{s.sit_desc}</option>)}
+                    </select>
+                </div>
+                {(profile?.function === 'MASTER' || profile?.function === 'GESTOR CLIENTE') && (
+                    <div className="flex items-end pb-2">
+                        <label className="flex items-center space-x-2 text-sm font-medium text-gray-300 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                name="cli_restrito_sn" 
+                                checked={formData.cli_restrito_sn === 'S'} 
+                                onChange={handleFormChange} 
+                                className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500" 
+                            />
+                            <span>Cliente Restrito?</span>
+                        </label>
+                    </div>
+                )}
             </div>
             <div className="flex justify-end pt-4 space-x-2">
                 <button type="button" onClick={closeModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">Cancelar</button>

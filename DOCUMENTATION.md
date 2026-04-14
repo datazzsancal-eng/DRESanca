@@ -7,7 +7,7 @@ Este documento fornece uma visão técnica aprofundada da aplicação DRE View, 
 A aplicação utiliza um modelo de permissões granular baseado em "Tenants" (Clientes) e "Sub-tenants" (Empresas).
 
 ### 1.1 Tabelas Envolvidas
-- **`profiles`**: Extensão da tabela `auth.users` do Supabase. Armazena metadados do usuário como `full_name`, `username`, `function` e `bio`.
+- **`profiles`**: Extensão da tabela `auth.users` do Supabase. Armazena metadados do usuário como `full_name`, `username` (sincronizado com o e-mail), `function` e `website`. O campo `bio` foi removido.
 - **`rel_prof_cli_empr`**: Tabela central de permissões. Define quais usuários têm acesso a quais clientes e empresas.
     - `profile_id`: ID do usuário.
     - `cliente_id`: ID do cliente (Grupo Econômico).
@@ -55,7 +55,7 @@ Os templates definem as linhas, cálculos e formatação do DRE.
 A aplicação se integra com um backend de processamento (n8n) via webhooks.
 
 ### 3.1 Consulta de Dados DRE (Dashboard)
-- **Endpoint:** `GET https://webhook.moondog-ia.tech/webhook/dre`
+- **Endpoint:** `GET https://webhook.synapiens.com.br/webhook/dre_busca`
 - **Query Params:**
     - `carga`: Período de referência (ex: `202401`).
     - `id`: ID da Visão (`dre_visao.id`).
@@ -92,6 +92,21 @@ A aplicação se integra com um backend de processamento (n8n) via webhooks.
 - **Query Params:** `cntr` (Código de controle do template).
 - **Uso:** Utilizado na tela de edição de templates para visualizar como a estrutura será processada antes de aplicá-la oficialmente.
 
+### 3.4 Carga de Movimento
+- **Endpoint:** `POST https://webhook.synapiens.com.br/webhook/movimento-upsert`
+- **Payload:**
+    ```json
+    {
+      "file_path": "caminho/no/storage.csv",
+      "bucket": "movimento_upload",
+      "cliente_id": "ID_DO_CLIENTE",
+      "empresa_id": "ID_DA_EMPRESA",
+      "periodo": "YYYYMM",
+      "cnpj_raiz": "8_DIGITOS"
+    }
+    ```
+- **Fluxo:** Similar à carga de plano, mas focado em dados transacionais mensais por empresa.
+
 ---
 
 ## 6. Fluxo Esperado da Aplicação
@@ -111,43 +126,32 @@ O fluxo de trabalho típico de um usuário no DRE View segue esta sequência:
 
 ---
 
-## 8. Mecanismos de Autenticação e Gestão de Usuários
+## 9. Hierarquia e Tipificação de Usuários
 
-A segurança e o controle de acesso da aplicação são baseados no ecossistema **Supabase Auth** integrado ao **PostgreSQL RLS (Row Level Security)**.
+Atualmente, a aplicação adota um modelo de **Hierarquia Funcional** baseada em permissões de dados, em vez de papéis (roles) fixos de sistema.
 
-### 8.1 Mecanismo de Autenticação
-- **Provedor:** Supabase GoTrue (JWT).
-- **Persistência:** A sessão é armazenada no `localStorage` sob a chave `sb-[project-id]-auth-token`, permitindo que o usuário permaneça logado entre recarregamentos de página.
-- **Contexto Global (`AuthContext.tsx`):**
-    - Utiliza o hook `onAuthStateChange` para escutar eventos de login, logout e atualização de token.
-    - Ao detectar um usuário logado, o contexto busca automaticamente o perfil na tabela `profiles` e a lista de clientes permitidos na tabela `rel_prof_cli_empr`.
-    - **Token JWT:** Todas as requisições feitas via SDK do Supabase incluem automaticamente o cabeçalho `Authorization: Bearer <JWT>`, que é validado pelo banco de dados.
+### 9.1 Tipos de Usuários (Hierarquia de Função)
+Os usuários são tipificados através do campo `function` na tabela `profiles`, seguindo uma hierarquia definida:
 
-### 8.2 Gestão de Perfis (`profiles`)
-Diferente do Supabase Auth (que gerencia apenas e-mail/senha), a tabela `profiles` no esquema `public` armazena os dados de negócio:
-- **Sincronização:** O `id` da tabela `profiles` é uma Foreign Key para `auth.users.id`.
-- **Campos:** `full_name`, `username`, `function`, `avatar_url`.
-- **Segurança:** Protegida por RLS. Um usuário comum só pode ler seu próprio perfil ou perfis de outros usuários se houver uma relação de cliente em comum (dependendo da configuração da Policy).
+1.  **MASTER:** Acesso irrestrito e controle total da plataforma. Pode atribuir qualquer função a outros usuários.
+2.  **GESTOR CLIENTE:** Gerencia todos os aspectos de um ou mais clientes específicos. Pode atribuir funções até o nível de GESTOR CLIENTE. Tem acesso automático a todas as empresas dos clientes que gerencia.
+3.  **ADMIN:** Administrador com permissões de configuração e gestão de usuários. Ao criar um cliente, este é automaticamente associado ao seu acesso, garantindo controle total sobre as empresas desse cliente.
+4.  **GESTOR CONTA:** Responsável pela gestão financeira e estrutural das contas. Não tem acesso ao CRUD de Cliente, Configurações ou Administração de Usuários.
+5.  **COLABORADOR:** Usuário operacional. Não tem acesso ao CRUD de Cliente, Empresa, Análise & Modelos, Configurações ou Administração de Usuários. Pode realizar cargas de plano contábil e visualizar o plano.
+6.  **LEITOR:** Acesso exclusivo para consulta de dashboards e exportação de relatórios. O menu lateral é dinamicamente filtrado para exibir apenas o Dashboard.
 
-### 8.3 Mecanismo de Multi-Tenancy (Isolamento de Dados)
-O isolamento entre diferentes grupos econômicos (Clientes) é garantido por:
-1.  **Filtro de Aplicação:** O `AuthContext` expõe o `selectedClient`. Todos os componentes de página utilizam este ID para filtrar as queries (`.eq('cliente_id', selectedClient.id)`).
-2.  **Segurança no Banco (RLS):** As tabelas críticas possuem políticas que verificam se o `auth.uid()` do usuário logado possui uma entrada correspondente na tabela `rel_prof_cli_empr` para o `cliente_id` do recurso que está sendo acessado.
+### 9.2 Gestão de Senhas e Segurança
+- **E-mail como Login:** O campo de login é ocultado e sincronizado com o e-mail do usuário.
+- **Validação de Senha:** O formulário exige que a senha e a confirmação sejam idênticas.
+- **Troca de Senha pelo Usuário:** No cabeçalho da aplicação, ao clicar no nome do usuário, é possível acessar a opção "Troca de senha". O sistema exige a senha atual para validar a operação, além da nova senha e sua confirmação.
+- **Redefinição por Administrador:** Administradores podem redefinir senhas de outros usuários através da tela de Gestão de Usuários. Para usuários existentes, a alteração de senha exige a validação da "Senha Atual" via re-autenticação no Supabase Auth.
+- **Visibilidade:** Implementado toggle (ícone de olho) para alternar visibilidade dos campos de senha.
 
-### 8.4 Fluxo Técnico de Criação de Usuário (Admin)
-Para evitar conflitos de sessão (onde o administrador seria deslogado ao criar um novo usuário), o sistema utiliza um **Cliente Supabase Temporário**:
-1.  O administrador preenche os dados (E-mail, Senha, Nome).
-2.  O sistema instancia um `createClient` com `persistSession: false`.
-3.  É executado o `signUp`.
-4.  Após o sucesso no Auth, o sistema utiliza o cliente administrativo para:
-    - Inserir o registro na tabela `profiles`.
-    - Inserir as permissões na tabela `rel_prof_cli_empr`.
-5.  **Confirmação de E-mail:** Se a configuração "Confirm Email" estiver ativa no Supabase, o usuário receberá um link de ativação antes de conseguir logar.
+### 9.3 Campos de Restrição (MASTER/GESTOR CLIENTE)
+- **`cli_restrito_sn` (dre_cliente):** Indica se um cliente é restrito. Visível apenas para MASTER e GESTOR CLIENTE.
+- **`emp_restrito_sn` (dre_empresa):** Indica se uma empresa é restrita. Visível apenas para MASTER e GESTOR CLIENTE.
 
-### 8.5 Hierarquia de Acesso Granular
-O sistema de permissões na tabela `rel_prof_cli_empr` suporta três níveis de profundidade:
-- **Nível 1 (Acesso ao Cliente):** O usuário vê o nome do cliente na lista de seleção.
-- **Nível 2 (Acesso Total às Empresas):** Se `empresa_id` for `NULL`, o usuário herda acesso a todas as empresas atuais e futuras daquele cliente.
-- **Nível 3 (Acesso Restrito):** O usuário só visualiza e consolida dados das empresas cujos IDs estão explicitamente listados na tabela de relações.
-- **Impacto no Dashboard:** O Dashboard filtra automaticamente os períodos e visões disponíveis com base nessas permissões. Se um usuário tem acesso apenas à "Empresa A", ele não verá visões que consolidam a "Empresa B".
+### 9.4 Segurança de Interface vs. Banco
+- **Interface:** Os menus são filtrados dinamicamente com base na função do usuário. Usuários com função `LEITOR` são redirecionados para o Dashboard se tentarem acessar URLs restritas.
+- **Banco de Dados (RLS):** A segurança real reside no PostgreSQL. Se um usuário sem permissão tentar acessar a lista de usuários ou editar um template de outro cliente, o Supabase retornará erro de permissão negada, garantindo a integridade do sistema.
 

@@ -39,7 +39,7 @@ interface TemplateListPageProps {
 }
 
 export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onAddNew, onManageCards }) => {
-  const { user, selectedClient } = useAuth();
+  const { user, selectedClient, profile } = useAuth();
   
   // State management
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -75,30 +75,34 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
     setError(null);
     try {
       // 1. Fetch User Permissions for the selected client
-      const { data: relData, error: relError } = await supabase
-        .from('rel_prof_cli_empr')
-        .select(`
-            empresa_id,
-            dre_empresa ( emp_cnpj_raiz )
-        `)
-        .eq('profile_id', user.id)
-        .eq('cliente_id', selectedClient.id)
-        .eq('rel_situacao_id', 'ATV');
-
-      if (relError) throw relError;
-
-      // 2. Process Permissions
       let hasFullAccess = false;
       const allowedRoots = new Set<string>();
 
-      if (relData) {
-          relData.forEach((r: any) => {
-              if (r.empresa_id === null) {
-                  hasFullAccess = true;
-              } else if (r.dre_empresa?.emp_cnpj_raiz) {
-                  allowedRoots.add(r.dre_empresa.emp_cnpj_raiz);
-              }
-          });
+      if (profile?.function === 'MASTER') {
+          hasFullAccess = true;
+      } else {
+          const { data: relData, error: relError } = await supabase
+            .from('rel_prof_cli_empr')
+            .select(`
+                empresa_id,
+                dre_empresa ( emp_cnpj_raiz )
+            `)
+            .eq('profile_id', user.id)
+            .eq('cliente_id', selectedClient.id)
+            .eq('rel_situacao_id', 'ATV');
+
+          if (relError) throw relError;
+
+          // 2. Process Permissions
+          if (relData) {
+              relData.forEach((r: any) => {
+                  if (r.empresa_id === null) {
+                      hasFullAccess = true;
+                  } else if (r.dre_empresa?.emp_cnpj_raiz) {
+                      allowedRoots.add(r.dre_empresa.emp_cnpj_raiz);
+                  }
+              });
+          }
       }
 
       // 3. Fetch Templates strictly for selected client

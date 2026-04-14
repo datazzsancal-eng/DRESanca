@@ -54,7 +54,7 @@ interface TemplateEditPageProps {
 }
 
 const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack }) => {
-  const { user, selectedClient } = useAuth();
+  const { user, selectedClient, profile } = useAuth();
   
   const [headerData, setHeaderData] = useState<TemplateHeader>({
     cliente_id: selectedClient?.id || '',
@@ -127,32 +127,38 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
     setError(null);
     try {
       // 1. Fetch User Permissions for the specific selected client
-      const [relRes, tiposRes, estilosRes] = await Promise.all([
-        supabase.from('rel_prof_cli_empr')
-          .select('cliente_id, empresa_id, dre_empresa(emp_cnpj_raiz)')
-          .eq('profile_id', user.id)
-          .eq('cliente_id', selectedClient.id)
-          .eq('rel_situacao_id', 'ATV'),
+      let clientFullAccess = false;
+      const allowedRoots = new Set<string>();
+
+      const [tiposRes, estilosRes] = await Promise.all([
         supabase.from('tab_tipo_linha').select('*').order('tipo_linha'),
         supabase.from('tab_estilo_linha').select('*').order('estilo_nome'),
       ]);
 
-      if (relRes.error) throw relRes.error;
       if (tiposRes.error) throw tiposRes.error;
       if (estilosRes.error) throw estilosRes.error;
 
-      // Process Permissions
-      let clientFullAccess = false;
-      const allowedRoots = new Set<string>();
+      if (profile?.function === 'MASTER') {
+          clientFullAccess = true;
+      } else {
+          const { data: relData, error: relError } = await supabase
+            .from('rel_prof_cli_empr')
+            .select('cliente_id, empresa_id, dre_empresa(emp_cnpj_raiz)')
+            .eq('profile_id', user.id)
+            .eq('cliente_id', selectedClient.id)
+            .eq('rel_situacao_id', 'ATV');
 
-      if (relRes.data) {
-          relRes.data.forEach((r: any) => {
-              if (r.empresa_id === null) {
-                  clientFullAccess = true;
-              } else if (r.dre_empresa?.emp_cnpj_raiz) {
-                  allowedRoots.add(r.dre_empresa.emp_cnpj_raiz);
-              }
-          });
+          if (relError) throw relError;
+
+          if (relData) {
+              relData.forEach((r: any) => {
+                  if (r.empresa_id === null) {
+                      clientFullAccess = true;
+                  } else if (r.dre_empresa?.emp_cnpj_raiz) {
+                      allowedRoots.add(r.dre_empresa.emp_cnpj_raiz);
+                  }
+              });
+          }
       }
       
       setUserPermissions({ allowedRoots, clientFullAccess });

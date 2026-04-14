@@ -21,6 +21,7 @@ interface Empresa {
   emp_nome: string | null;
   emp_nome_reduz: string | null;
   emp_nome_cmpl: string | null;
+  emp_restrito_sn: string;
 }
 
 const initialFormData = {
@@ -29,6 +30,7 @@ const initialFormData = {
     emp_cnpj_raiz: '',
     emp_cnpj: '',
     emp_matriz_sn: 'N',
+    emp_restrito_sn: 'N',
     emp_nome: '',
     emp_nome_reduz: '',
     emp_nome_cmpl: '',
@@ -36,7 +38,7 @@ const initialFormData = {
 
 
 const EmpresaPage: React.FC = () => {
-  const { selectedClient, user } = useAuth();
+  const { selectedClient, user, profile } = useAuth();
 
   // State management
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -63,24 +65,27 @@ const EmpresaPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      // 1. Check permissions
-      const { data: relData, error: relError } = await supabase
-        .from('rel_prof_cli_empr')
-        .select('empresa_id')
-        .eq('profile_id', user.id)
-        .eq('cliente_id', selectedClient.id)
-        .eq('rel_situacao_id', 'ATV');
-
-      if (relError) throw relError;
-
       let allowedCompanyIds: string[] = [];
       let hasFullAccess = false;
 
-      if (relData) {
-          // If any record has null empresa_id, user has full access to client
-          hasFullAccess = relData.some((r: any) => r.empresa_id === null);
-          if (!hasFullAccess) {
-              allowedCompanyIds = relData.map((r: any) => r.empresa_id).filter(Boolean);
+      if (profile?.function === 'MASTER') {
+          hasFullAccess = true;
+      } else {
+          const { data: relData, error: relError } = await supabase
+            .from('rel_prof_cli_empr')
+            .select('empresa_id')
+            .eq('profile_id', user.id)
+            .eq('cliente_id', selectedClient.id)
+            .eq('rel_situacao_id', 'ATV');
+
+          if (relError) throw relError;
+
+          if (relData) {
+              // If any record has null empresa_id, user has full access to client
+              hasFullAccess = relData.some((r: any) => r.empresa_id === null);
+              if (!hasFullAccess) {
+                  allowedCompanyIds = relData.map((r: any) => r.empresa_id).filter(Boolean);
+              }
           }
       }
 
@@ -144,6 +149,7 @@ const EmpresaPage: React.FC = () => {
       emp_cnpj_raiz: empresa?.emp_cnpj_raiz || '',
       emp_cnpj: empresa?.emp_cnpj || '',
       emp_matriz_sn: empresa?.emp_matriz_sn || 'N',
+      emp_restrito_sn: empresa?.emp_restrito_sn || 'N',
       emp_nome: empresa?.emp_nome || '',
       emp_nome_reduz: empresa?.emp_nome_reduz || '',
       emp_nome_cmpl: empresa?.emp_nome_cmpl || '',
@@ -207,8 +213,8 @@ const EmpresaPage: React.FC = () => {
       if (insertError) {
         requestError = insertError;
       } else if (newEmpresa) {
-        // Auto-associate the new company with the current user
-        if (user && newEmpresa.cliente_id) {
+        // Auto-associate the new company with the current user (only for granular access users)
+        if (user && newEmpresa.cliente_id && profile?.function !== 'MASTER' && profile?.function !== 'GESTOR CLIENTE' && profile?.function !== 'ADMIN') {
             try {
                 const { error: relProfError } = await supabase
                     .from('rel_prof_cli_empr')
@@ -421,8 +427,8 @@ const EmpresaPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Linha 4: CNPJ, Cod Integração e Matriz */}
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Linha 4: CNPJ, Cod Integração, Matriz e Restrito */}
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                     <label htmlFor="emp_cnpj" className="block text-sm font-medium text-gray-300">CNPJ</label>
                     <input type="text" name="emp_cnpj" id="emp_cnpj" value={formData.emp_cnpj} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
@@ -437,6 +443,14 @@ const EmpresaPage: React.FC = () => {
                         <span>É Matriz?</span>
                     </label>
                 </div>
+                {(profile?.function === 'MASTER' || profile?.function === 'GESTOR CLIENTE') && (
+                    <div className="flex items-end pb-2">
+                        <label className="flex items-center space-x-2 text-sm font-medium text-gray-300 cursor-pointer">
+                            <input type="checkbox" name="emp_restrito_sn" checked={formData.emp_restrito_sn === 'S'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500" />
+                            <span>Empresa Restrita?</span>
+                        </label>
+                    </div>
+                )}
             </div>
 
             <div className="flex justify-end pt-4 space-x-2">

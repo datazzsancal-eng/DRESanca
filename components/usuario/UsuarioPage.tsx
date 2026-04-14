@@ -5,6 +5,9 @@ import { supabase, supabaseUrl, supabaseAnonKey } from '../../lib/supabaseClient
 import { createClient } from '@supabase/supabase-js';
 import Modal from '../shared/Modal';
 import Shuttle from '../shared/Shuttle';
+import { useAuth } from '../../contexts/AuthContext';
+import { Eye, EyeOff } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 // Type definitions
 interface UserProfile {
@@ -13,7 +16,6 @@ interface UserProfile {
   username: string | null;
   full_name: string | null;
   avatar_url: string | null;
-  bio: string | null;
   website: string | null;
   function: string | null;
 }
@@ -43,6 +45,7 @@ interface ClientCache {
 }
 
 const UsuarioPage: React.FC = () => {
+  const { profile: currentUserProfile } = useAuth();
   // State management
   const [usuarios, setUsuarios] = useState<UserProfile[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -74,12 +77,16 @@ const UsuarioPage: React.FC = () => {
   const initialFormState = {
     email: '',
     password: '',
+    confirmPassword: '',
+    currentPassword: '',
     username: '',
     full_name: '',
-    function: '',
-    bio: ''
+    function: ''
   };
   const [formData, setFormData] = useState(initialFormState);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
 
   // Filter state
   const [filtroNome, setFiltroNome] = useState('');
@@ -155,10 +162,10 @@ const UsuarioPage: React.FC = () => {
         // Edit mode
         setFormData({
             ...initialFormState,
+            email: user.username || '',
             username: user.username || '',
             full_name: user.full_name || '',
-            function: user.function || '',
-            bio: user.bio || ''
+            function: user.function || ''
         });
 
         setLoadingDetails(true);
@@ -258,7 +265,7 @@ const UsuarioPage: React.FC = () => {
   };
 
   // CRUD operations
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
@@ -338,7 +345,7 @@ const UsuarioPage: React.FC = () => {
   };
 
 
-  const handleSaveRelations = async (userId: string) => {
+  const handleSaveRelations = async (userId: string, userFunction: string) => {
       // 1. Delete existing relations
       // Note: We use the MAIN supabase client here because we are editing relations as admin
       const { error: deleteError } = await supabase
@@ -348,6 +355,11 @@ const UsuarioPage: React.FC = () => {
       
       if (deleteError) throw deleteError;
 
+      // If user is MASTER, they don't need granular relations
+      if (userFunction === 'MASTER') {
+          return;
+      }
+
       // 2. Build Insert Payload
       const rowsToInsert: any[] = [];
 
@@ -355,7 +367,15 @@ const UsuarioPage: React.FC = () => {
           const selectedCompanies = userConfig.selectedCompanies[clienteId];
           const clientDetails = clientCache[clienteId];
 
-          if (!clientDetails || clientDetails.empresas.length === 0) {
+          if (userFunction === 'GESTOR CLIENTE' || userFunction === 'ADMIN') {
+              // GESTOR CLIENTE and ADMIN always get full access to selected clients
+              rowsToInsert.push({
+                  profile_id: userId,
+                  cliente_id: clienteId,
+                  empresa_id: null,
+                  rel_situacao_id: 'ATV'
+              });
+          } else if (!clientDetails || clientDetails.empresas.length === 0) {
               // Client has no companies yet, or details not loaded. Grant full access so they can see the client.
               rowsToInsert.push({
                   profile_id: userId,
@@ -400,34 +420,72 @@ const UsuarioPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
+
+    // Password Validation
+    if (formData.password || !selectedUser) {
+        if (formData.password !== formData.confirmPassword) {
+            setError("As senhas não conferem!");
+            return;
+        }
+        if (!selectedUser && !formData.password) {
+            setError("A senha é obrigatória para novos usuários!");
+            return;
+        }
+    }
+
     setLoading(true);
 
     let targetUserId = selectedUser?.id;
 
     try {
         if (selectedUser) {
+            // If password is being changed
+            if (formData.password) {
+                if (!formData.currentPassword) {
+                    throw new Error("A senha atual é obrigatória para alteração de senha.");
+                }
+
+                // Validate current password
+                // Note: This only works if the user is changing their OWN password
+                // or if we have a way to verify it. 
+                // We'll try to sign in with the current email and provided current password.
+                const { error: authCheckError } = await supabase.auth.signInWithPassword({
+                    email: formData.email,
+                    password: formData.currentPassword
+                });
+
+                if (authCheckError) {
+                    throw new Error("Senha atual incorreta. Não foi possível validar a alteração.");
+                }
+
+                // Update Auth Password
+                const { error: passUpdateError } = await supabase.auth.updateUser({
+                    password: formData.password
+                });
+
+                if (passUpdateError) throw passUpdateError;
+            }
+
             // UPDATE Profile (Existing User)
             const { error: updateError } = await supabase
                 .from('profiles')
                 .update({
                     full_name: formData.full_name,
-                    username: formData.username,
+                    username: formData.email, // Keep username synced with email
                     function: formData.function,
-                    bio: formData.bio,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', selectedUser.id);
 
             if (updateError) throw updateError;
             
-            await handleSaveRelations(selectedUser.id);
+            await handleSaveRelations(selectedUser.id, formData.function);
             setSuccessMsg("Usuário atualizado com sucesso!");
 
         } else {
             // CREATE Profile (New User)
             
             // 1. Configure temp client to NOT persist session
-            // This prevents the admin from being logged out or having session conflicts ("Multiple GoTrueClient" warning)
             const tempSupabase = createClient(supabaseUrl, supabaseAnonKey, {
                 auth: {
                     persistSession: false,
@@ -454,13 +512,11 @@ const UsuarioPage: React.FC = () => {
             targetUserId = authData.user.id;
 
             // 3. Insert Profile
-            // Tenta inserir como o usuário criado (se tiver sessão) ou como Admin (se não tiver)
             const profilePayload = {
                 id: targetUserId,
-                username: formData.username,
+                username: formData.email, // Use email as username
                 full_name: formData.full_name,
                 function: formData.function,
-                bio: formData.bio,
                 updated_at: new Date().toISOString()
             };
 
@@ -487,7 +543,7 @@ const UsuarioPage: React.FC = () => {
             }
 
             // 4. Save Relations (using Admin client)
-            await handleSaveRelations(targetUserId);
+            await handleSaveRelations(targetUserId, formData.function);
             setSuccessMsg("Usuário criado com sucesso!");
         }
 
@@ -586,67 +642,188 @@ const UsuarioPage: React.FC = () => {
 
       <Modal isOpen={isModalOpen} onClose={closeModal} title={selectedUser ? 'Editar Perfil e Acessos' : 'Novo Usuário'} size="5xl">
         <form onSubmit={handleSubmit} className="space-y-4 max-h-[85vh] overflow-y-auto pr-2">
-            {error && <div className="p-2 text-sm text-red-300 bg-red-900/40 border border-red-700 rounded-md">{error}</div>}
-            {successMsg && <div className="p-2 text-sm text-green-300 bg-green-900/40 border border-green-700 rounded-md">{successMsg}</div>}
+            {error && (
+                <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-2 text-sm text-red-300 bg-red-900/40 border border-red-700 rounded-md"
+                >
+                    {error}
+                </motion.div>
+            )}
+            {successMsg && (
+                <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-2 text-sm text-green-300 bg-green-900/40 border border-green-700 rounded-md"
+                >
+                    {successMsg}
+                </motion.div>
+            )}
             
             {/* 1. Dados Básicos */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {!selectedUser && (
-                    <>
-                        <div><label className="block text-sm text-gray-300">E-mail *</label><input type="email" name="email" value={formData.email} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md" /></div>
-                        <div><label className="block text-sm text-gray-300">Senha *</label><input type="password" name="password" value={formData.password} onChange={handleFormChange} required minLength={6} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md" /></div>
-                    </>
+            <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm text-gray-300">E-mail *</label>
+                        <input 
+                            type="email" 
+                            name="email" 
+                            value={formData.email} 
+                            onChange={handleFormChange} 
+                            required 
+                            disabled={!!selectedUser}
+                            className={`w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md ${selectedUser ? 'opacity-60 cursor-not-allowed' : ''}`} 
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm text-gray-300">Função *</label>
+                        <select name="function" value={formData.function} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md">
+                            <option value="">Selecione...</option>
+                            {currentUserProfile?.function === 'MASTER' && <option value="MASTER">MASTER</option>}
+                            {(currentUserProfile?.function === 'MASTER' || currentUserProfile?.function === 'GESTOR CLIENTE') && <option value="GESTOR CLIENTE">GESTOR CLIENTE</option>}
+                            <option value="ADMIN">ADMIN</option>
+                            <option value="GESTOR CONTA">GESTOR CONTA</option>
+                            <option value="COLABORADOR">COLABORADOR</option>
+                            <option value="LEITOR">LEITOR</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-sm text-gray-300">Nome Completo *</label>
+                    <input type="text" name="full_name" value={formData.full_name} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md" />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="relative">
+                        <label className="block text-sm text-gray-300">{selectedUser ? 'Nova Senha' : 'Senha *'}</label>
+                        <div className="relative">
+                            <input 
+                                type={showPassword ? "text" : "password"} 
+                                name="password" 
+                                value={formData.password} 
+                                onChange={handleFormChange} 
+                                required={!selectedUser}
+                                className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md pr-10" 
+                            />
+                            <button 
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white mt-0.5"
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="relative">
+                        <label className="block text-sm text-gray-300">{selectedUser ? 'Confirmar Nova Senha' : 'Confirmar Senha *'}</label>
+                        <div className="relative">
+                            <input 
+                                type={showConfirmPassword ? "text" : "password"} 
+                                name="confirmPassword" 
+                                value={formData.confirmPassword} 
+                                onChange={handleFormChange} 
+                                required={!!formData.password || !selectedUser}
+                                className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md pr-10" 
+                            />
+                            <button 
+                                type="button"
+                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white mt-0.5"
+                            >
+                                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {selectedUser && formData.password && (
+                    <motion.div 
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        className="relative"
+                    >
+                        <label className="block text-sm text-gray-300 font-bold text-yellow-500">Senha Atual (para validar alteração) *</label>
+                        <div className="relative">
+                            <input 
+                                type={showCurrentPassword ? "text" : "password"} 
+                                name="currentPassword" 
+                                value={formData.currentPassword} 
+                                onChange={handleFormChange} 
+                                required
+                                className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-yellow-600 rounded-md pr-10" 
+                            />
+                            <button 
+                                type="button"
+                                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white mt-0.5"
+                            >
+                                {showCurrentPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
+                    </motion.div>
                 )}
-                <div><label className="block text-sm text-gray-300">Nome Completo *</label><input type="text" name="full_name" value={formData.full_name} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md" /></div>
-                <div><label className="block text-sm text-gray-300">Usuário (Login)</label><input type="text" name="username" value={formData.username} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md" /></div>
-                <div><label className="block text-sm text-gray-300">Função</label><input type="text" name="function" value={formData.function} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md" /></div>
-                <div><label className="block text-sm text-gray-300">Bio</label><input type="text" name="bio" value={formData.bio} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md" /></div>
             </div>
 
             <hr className="border-gray-700 my-4"/>
 
-            {/* 2. Seleção de Clientes (Shuttle Topo) */}
-            <div>
-                <h3 className="text-sm font-bold text-gray-300 mb-2 uppercase">1. Seleção de Clientes</h3>
-                <Shuttle 
-                    items={shuttleClients}
-                    selectedIds={selectedClientIds}
-                    onChange={handleClientSelectionChange}
-                    availableTitle="Clientes Disponíveis"
-                    selectedTitle="Clientes Selecionados"
-                    height="180px"
-                />
-            </div>
-
-            {/* 3. Configuração Granular (Tabs) */}
-            {selectedClientIds.size > 0 && (
-                <div className="mt-4 bg-gray-900/30 p-4 rounded-lg border border-gray-700">
-                    <h3 className="text-sm font-bold text-gray-300 mb-3 uppercase">2. Configuração de Acesso por Cliente</h3>
-                    
-                    {/* Tabs Header */}
-                    <div className="flex space-x-2 border-b border-gray-600 pb-1 mb-4 overflow-x-auto">
-                        {Array.from(selectedClientIds).map(cliId => {
-                            const cliName = clientes.find(c => c.id === cliId)?.cli_nome || 'Cliente';
-                            const isActive = activeTab === cliId;
-                            return (
-                                <button
-                                    key={cliId}
-                                    type="button"
-                                    onClick={() => setActiveTab(cliId)}
-                                    className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${isActive ? 'bg-gray-700 text-white border-t border-x border-gray-600' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-                                >
-                                    {cliName}
-                                </button>
-                            );
-                        })}
+            {formData.function === 'MASTER' ? (
+                <div className="p-4 bg-indigo-900/30 border border-indigo-700 rounded-md">
+                    <h3 className="text-sm font-bold text-indigo-300 mb-1">Acesso Irrestrito</h3>
+                    <p className="text-sm text-indigo-200/70">Usuários com a função MASTER têm acesso automático e irrestrito a todos os clientes e empresas do sistema. Não é necessário configurar acessos granulares.</p>
+                </div>
+            ) : (
+                <>
+                    {/* 2. Seleção de Clientes (Shuttle Topo) */}
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-300 mb-2 uppercase">1. Seleção de Clientes</h3>
+                        {(formData.function === 'GESTOR CLIENTE' || formData.function === 'ADMIN') && (
+                            <div className="p-3 mb-4 bg-blue-900/20 border border-blue-800 rounded-md">
+                                <p className="text-xs text-blue-300">
+                                    Usuários com a função <strong>{formData.function}</strong> têm acesso automático a todas as empresas dos clientes selecionados.
+                                </p>
+                            </div>
+                        )}
+                        <Shuttle 
+                            items={shuttleClients}
+                            selectedIds={selectedClientIds}
+                            onChange={handleClientSelectionChange}
+                            availableTitle="Clientes Disponíveis"
+                            selectedTitle="Clientes Selecionados"
+                            height="180px"
+                        />
                     </div>
 
-                    {/* Tab Content */}
-                    {activeTab && activeTabDetails ? (
-                        <div className="space-y-4 animate-fadeIn">
-                            {/* A. CNPJ Roots */}
-                            <div className="bg-gray-800 p-3 rounded-md border border-gray-700">
-                                <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">CNPJs do Grupo</h4>
+                    {/* 3. Configuração Granular (Tabs) */}
+                    {formData.function !== 'GESTOR CLIENTE' && formData.function !== 'ADMIN' && selectedClientIds.size > 0 && (
+                        <div className="mt-4 bg-gray-900/30 p-4 rounded-lg border border-gray-700">
+                            <h3 className="text-sm font-bold text-gray-300 mb-3 uppercase">2. Configuração de Acesso por Cliente</h3>
+                            
+                            {/* Tabs Header */}
+                            <div className="flex space-x-2 border-b border-gray-600 pb-1 mb-4 overflow-x-auto">
+                                {Array.from(selectedClientIds).map(cliId => {
+                                    const cliName = clientes.find(c => c.id === cliId)?.cli_nome || 'Cliente';
+                                    const isActive = activeTab === cliId;
+                                    return (
+                                        <button
+                                            key={cliId}
+                                            type="button"
+                                            onClick={() => setActiveTab(cliId)}
+                                            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${isActive ? 'bg-gray-700 text-white border-t border-x border-gray-600' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                                        >
+                                            {cliName}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Tab Content */}
+                            {activeTab && activeTabDetails ? (
+                                <div className="space-y-4 animate-fadeIn">
+                                    {/* A. CNPJ Roots */}
+                                    <div className="bg-gray-800 p-3 rounded-md border border-gray-700">
+                                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">CNPJs do Grupo</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                     {activeTabDetails.cnpjs.map(root => (
                                         <label key={root.cnpj_raiz} className="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-700 transition">
@@ -683,6 +860,14 @@ const UsuarioPage: React.FC = () => {
                         </div>
                     )}
                 </div>
+            )}
+            {formData.function === 'GESTOR CLIENTE' && selectedClientIds.size > 0 && (
+                <div className="mt-4 p-4 bg-indigo-900/30 border border-indigo-700 rounded-md">
+                    <h3 className="text-sm font-bold text-indigo-300 mb-1">Acesso Total aos Clientes Selecionados</h3>
+                    <p className="text-sm text-indigo-200/70">Usuários com a função GESTOR CLIENTE têm acesso automático a todas as empresas dos clientes selecionados.</p>
+                </div>
+            )}
+            </>
             )}
 
             <div className="flex justify-end pt-4 space-x-2 border-t border-gray-700">

@@ -33,7 +33,7 @@ interface VisaoEditPageProps {
 }
 
 const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
-  const { user, selectedClient } = useAuth();
+  const { user, selectedClient, profile } = useAuth();
   
   const [headerData, setHeaderData] = useState<VisaoHeader>({
     ...initialHeaderState,
@@ -94,28 +94,32 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
       if (!user || !selectedClient) return;
       try {
         // 1. Fetch User Permissions (for the context client only)
-        const { data: relData, error: relError } = await supabase
-            .from('rel_prof_cli_empr')
-            .select('cliente_id, empresa_id')
-            .eq('profile_id', user.id)
-            .eq('cliente_id', selectedClient.id)
-            .eq('rel_situacao_id', 'ATV');
-
-        if (relError) throw relError;
-
         const perms = {
             clientFullAccess: new Set<string>(),
             allowedCompanyIds: new Set<string>()
         };
 
-        if (relData) {
-            relData.forEach((r: any) => {
-                if (r.empresa_id === null) {
-                    perms.clientFullAccess.add(r.cliente_id);
-                } else {
-                    perms.allowedCompanyIds.add(r.empresa_id);
-                }
-            });
+        if (profile?.function === 'MASTER') {
+            perms.clientFullAccess.add(selectedClient.id);
+        } else {
+            const { data: relData, error: relError } = await supabase
+                .from('rel_prof_cli_empr')
+                .select('cliente_id, empresa_id')
+                .eq('profile_id', user.id)
+                .eq('cliente_id', selectedClient.id)
+                .eq('rel_situacao_id', 'ATV');
+
+            if (relError) throw relError;
+
+            if (relData) {
+                relData.forEach((r: any) => {
+                    if (r.empresa_id === null) {
+                        perms.clientFullAccess.add(r.cliente_id);
+                    } else {
+                        perms.allowedCompanyIds.add(r.empresa_id);
+                    }
+                });
+            }
         }
         setUserPermissions(perms);
 

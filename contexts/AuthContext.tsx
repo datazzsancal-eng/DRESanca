@@ -58,45 +58,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching profile:', error);
+        return null;
       } else {
         setProfile(data);
+        return data;
       }
     } catch (error) {
       console.error('Exception fetching profile:', error);
+      return null;
     }
   };
 
-  const fetchUserClients = useCallback(async (userId: string, skipAutoSelect: boolean = false) => {
+  const fetchUserClients = useCallback(async (userId: string, userFunction: string | null, skipAutoSelect: boolean = false) => {
     try {
-      const { data: relData, error: relError } = await supabase
-        .from('rel_prof_cli_empr')
-        .select('cliente_id')
-        .eq('profile_id', userId)
-        .eq('rel_situacao_id', 'ATV')
-        .not('cliente_id', 'is', null);
+      let clientIds: string[] = [];
+      let clients: ClientContext[] = [];
 
-      if (relError) throw relError;
+      if (userFunction === 'MASTER') {
+         // MASTER users have unrestricted access to all clients
+         const { data: clientsData, error: clientsError } = await supabase
+            .from('dre_cliente')
+            .select('id, cli_nome')
+            .order('cli_nome');
+         
+         if (clientsError) throw clientsError;
+         clients = clientsData || [];
+      } else {
+         // Other users are restricted by rel_prof_cli_empr
+         const { data: relData, error: relError } = await supabase
+            .from('rel_prof_cli_empr')
+            .select('cliente_id')
+            .eq('profile_id', userId)
+            .eq('rel_situacao_id', 'ATV')
+            .not('cliente_id', 'is', null);
 
-      if (!relData || relData.length === 0) {
-          setAvailableClients([]);
-          setSelectedClientState(prev => {
-              if (prev) localStorage.removeItem('dre_selected_client');
-              return null;
-          });
-          return;
+         if (relError) throw relError;
+
+         if (!relData || relData.length === 0) {
+             setAvailableClients([]);
+             setSelectedClientState(prev => {
+                 if (prev) localStorage.removeItem('dre_selected_client');
+                 return null;
+             });
+             return;
+         }
+
+         clientIds = Array.from(new Set(relData.map((item: any) => item.cliente_id)));
+
+         const { data: clientsData, error: clientsError } = await supabase
+            .from('dre_cliente')
+            .select('id, cli_nome')
+            .in('id', clientIds)
+            .order('cli_nome');
+
+         if (clientsError) throw clientsError;
+         clients = clientsData || [];
       }
 
-      const clientIds = Array.from(new Set(relData.map((item: any) => item.cliente_id)));
-
-      const { data: clientsData, error: clientsError } = await supabase
-        .from('dre_cliente')
-        .select('id, cli_nome')
-        .in('id', clientIds)
-        .order('cli_nome');
-
-      if (clientsError) throw clientsError;
-      
-      const clients = clientsData || [];
       setAvailableClients(clients);
 
       setSelectedClientState(currentSelected => {
@@ -144,10 +162,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const loadUserData = async (sessionUser: User) => {
       try {
-        await Promise.all([
-          fetchProfile(sessionUser.id),
-          fetchUserClients(sessionUser.id, false)
-        ]);
+        // Fetch profile first to get the user function
+        const profileData = await fetchProfile(sessionUser.id);
+        await fetchUserClients(sessionUser.id, profileData?.function || null, false);
       } catch (err) {
         console.error("Error fetching user data:", err);
       } finally {
@@ -207,9 +224,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshClients = useCallback(async () => {
     if (user) {
-      await fetchUserClients(user.id, true);
+      await fetchUserClients(user.id, profile?.function || null, true);
     }
-  }, [user, fetchUserClients]);
+  }, [user, profile, fetchUserClients]);
 
   const signOut = useCallback(async () => {
     setLoading(true);

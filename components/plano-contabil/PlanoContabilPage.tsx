@@ -23,7 +23,7 @@ interface PlanoContabil {
 }
 
 const PlanoContabilPage: React.FC = () => {
-  const { selectedClient, user } = useAuth();
+  const { selectedClient, user, profile } = useAuth();
   const [isComparing, setIsComparing] = useState(false);
   
   // State management
@@ -57,31 +57,35 @@ const PlanoContabilPage: React.FC = () => {
       setError(null);
 
       try {
-        // 1. Buscar permissões: quais empresas este usuário pode ver neste cliente?
-        const { data: relData, error: relError } = await supabase
-            .from('rel_prof_cli_empr')
-            .select(`
-                empresa_id,
-                dre_empresa ( emp_cnpj_raiz )
-            `)
-            .eq('profile_id', user.id)
-            .eq('cliente_id', selectedClient.id)
-            .eq('rel_situacao_id', 'ATV');
-
-        if (relError) throw relError;
-
-        const allowedRoots = new Set<string>();
         let hasFullAccess = false;
+        const allowedRoots = new Set<string>();
 
-        if (relData) {
-            relData.forEach((item: any) => {
-                // Se empresa_id for nulo, assume acesso total ao cliente (legado ou admin irrestrito)
-                if (item.empresa_id === null) {
-                    hasFullAccess = true;
-                } else if (item.dre_empresa?.emp_cnpj_raiz) {
-                    allowedRoots.add(item.dre_empresa.emp_cnpj_raiz);
-                }
-            });
+        if (profile?.function === 'MASTER') {
+            hasFullAccess = true;
+        } else {
+            // 1. Buscar permissões: quais empresas este usuário pode ver neste cliente?
+            const { data: relData, error: relError } = await supabase
+                .from('rel_prof_cli_empr')
+                .select(`
+                    empresa_id,
+                    dre_empresa ( emp_cnpj_raiz )
+                `)
+                .eq('profile_id', user.id)
+                .eq('cliente_id', selectedClient.id)
+                .eq('rel_situacao_id', 'ATV');
+
+            if (relError) throw relError;
+
+            if (relData) {
+                relData.forEach((item: any) => {
+                    // Se empresa_id for nulo, assume acesso total ao cliente (legado ou admin irrestrito)
+                    if (item.empresa_id === null) {
+                        hasFullAccess = true;
+                    } else if (item.dre_empresa?.emp_cnpj_raiz) {
+                        allowedRoots.add(item.dre_empresa.emp_cnpj_raiz);
+                    }
+                });
+            }
         }
 
         // 2. Buscar todas as raízes disponíveis para o cliente (para pegar os nomes corretos da view)

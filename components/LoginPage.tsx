@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import appMetadata from '../app_metadata.json';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -100,12 +101,15 @@ const LoginPage: React.FC = () => {
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
-          <div className="flex justify-end pt-2">
+          <div className="flex flex-col items-end pt-2">
             <img 
               src="https://raw.githubusercontent.com/synapiens/uteis/refs/heads/main/LogoSynapiens/Synapiens_logo_hor.png" 
               alt="Synapiens" 
               className="h-8 w-auto" 
             />
+            <span className="text-[10px] text-gray-500 mt-1">
+              {appMetadata.app_version}
+            </span>
           </div>
         </form>
       </div>

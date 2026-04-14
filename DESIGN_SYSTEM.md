@@ -38,6 +38,7 @@ A aplicação utiliza um tema escuro (Dark Mode) focado em legibilidade de dados
 - Suporta estados recolhido (ícones) e expandido (texto + ícones).
 - Navegação hierárquica com submenus.
 - Exibe o cliente selecionado e permite a troca rápida.
+- **Visibilidade Dinâmica:** Itens de menu são filtrados com base na função (`function`) do usuário. Ex: Usuários `LEITOR` visualizam apenas o Dashboard.
 
 ### StatCards (Cards de Resumo)
 - Exibem métricas chave no topo do Dashboard.
@@ -49,11 +50,17 @@ A aplicação utiliza um tema escuro (Dark Mode) focado em legibilidade de dados
 - **Hierarquia:** Suporta níveis de indentação e estilos (Negrito/Itálico) baseados no plano de contas.
 - **Valores Negativos:** Destacados em vermelho automaticamente.
 
+### Modais e Formulários
+- **Layout de Usuário:** Campos organizados em grid responsivo. Ordem: E-mail, Função, Nome Completo, Senhas.
+- **Campos de Senha:** Incluem ícone de alternância de visibilidade (Eye/EyeOff).
+- **Feedback Visual:** Utiliza `framer-motion` para animações de entrada de mensagens de erro/sucesso e transições de visibilidade de campos.
+
 ### Skeletons (Carregamento)
 - Componentes de placeholder que imitam a estrutura da tabela e dos cards durante o carregamento de dados.
 
-## 5. Ícones
-- Utiliza a biblioteca **Lucide React** para a maioria dos ícones.
+## 5. Ícones e Animações
+- **Ícones:** Utiliza a biblioteca **Lucide React**.
+- **Animações:** Utiliza **Framer Motion** (`motion/react`) para micro-interações, feedbacks de formulário e transições de estado.
 - Ícones específicos de marca ou formatos (XLSX, CSV) são implementados como componentes SVG customizados.
 
 ## 6. Layout

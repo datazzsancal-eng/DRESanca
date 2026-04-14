@@ -8,7 +8,7 @@ interface EmpresaRaiz {
 }
 
 const CargaPlanoPage: React.FC = () => {
-  const { selectedClient, user } = useAuth();
+  const { selectedClient, user, profile } = useAuth();
   const [empresasRaiz, setEmpresasRaiz] = useState<EmpresaRaiz[]>([]);
   const [selectedCnpjRaiz, setSelectedCnpjRaiz] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,29 +30,33 @@ const CargaPlanoPage: React.FC = () => {
       setSuccess(null);
 
       try {
-        const { data: relData, error: relError } = await supabase
-            .from('rel_prof_cli_empr')
-            .select(`
-                empresa_id,
-                dre_empresa ( emp_cnpj_raiz )
-            `)
-            .eq('profile_id', user.id)
-            .eq('cliente_id', selectedClient.id)
-            .eq('rel_situacao_id', 'ATV');
-
-        if (relError) throw relError;
-
-        const allowedRoots = new Set<string>();
         let hasFullAccess = false;
+        const allowedRoots = new Set<string>();
 
-        if (relData) {
-            relData.forEach((item: any) => {
-                if (item.empresa_id === null) {
-                    hasFullAccess = true;
-                } else if (item.dre_empresa?.emp_cnpj_raiz) {
-                    allowedRoots.add(item.dre_empresa.emp_cnpj_raiz);
-                }
-            });
+        if (profile?.function === 'MASTER') {
+            hasFullAccess = true;
+        } else {
+            const { data: relData, error: relError } = await supabase
+                .from('rel_prof_cli_empr')
+                .select(`
+                    empresa_id,
+                    dre_empresa ( emp_cnpj_raiz )
+                `)
+                .eq('profile_id', user.id)
+                .eq('cliente_id', selectedClient.id)
+                .eq('rel_situacao_id', 'ATV');
+
+            if (relError) throw relError;
+
+            if (relData) {
+                relData.forEach((item: any) => {
+                    if (item.empresa_id === null) {
+                        hasFullAccess = true;
+                    } else if (item.dre_empresa?.emp_cnpj_raiz) {
+                        allowedRoots.add(item.dre_empresa.emp_cnpj_raiz);
+                    }
+                });
+            }
         }
 
         const { data: viewData, error: viewError } = await supabase

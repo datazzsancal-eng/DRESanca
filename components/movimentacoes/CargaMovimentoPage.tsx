@@ -1,22 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
-import { CheckCircle2, Circle, Clock, AlertCircle, Loader2, Upload, FileText, Play } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, AlertCircle, Loader2, Upload, FileText, Play, X, Search } from 'lucide-react';
 
 interface Empresa {
   id: string;
   emp_nome: string;
   emp_cnpj: string;
   emp_cnpj_raiz: string;
+  emp_cod_integra: string | null;
+  emp_nome_reduz: string | null;
+  emp_nome_cmpl: string | null;
 }
 
-type ProcessStatus = 'idle' | 'waiting' | 'uploading' | 'processing' | 'calculating' | 'success' | 'error';
+type OverallStatus = 'idle' | 'waiting' | 'processing' | 'success' | 'error';
+type CargaStatus = 'idle' | 'uploading' | 'upload_success' | 'processing' | 'success' | 'error';
+type CalcStatus = 'idle' | 'processing' | 'success' | 'error';
 
 interface EmpresaProcessState {
   empresa: Empresa;
   file: File | null;
-  status: ProcessStatus;
-  error?: string;
+  status: OverallStatus;
+  cargaStatus: CargaStatus;
+  cargaError?: string;
+  calcStatus: CalcStatus;
+  calcError?: string;
 }
 
 const CargaMovimentoPage: React.FC = () => {
@@ -29,6 +37,7 @@ const CargaMovimentoPage: React.FC = () => {
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const currentYear = new Date().getFullYear();
   const years = [currentYear, currentYear - 1];
@@ -78,9 +87,9 @@ const CargaMovimentoPage: React.FC = () => {
 
         const { data: empData, error: empError } = await supabase
           .from('dre_empresa')
-          .select('id, emp_nome, emp_cnpj, emp_cnpj_raiz')
+          .select('id, emp_nome, emp_cnpj, emp_cnpj_raiz, emp_cod_integra, emp_nome_reduz, emp_nome_cmpl')
           .eq('cliente_id', selectedClient.id)
-          .order('emp_nome');
+          .order('emp_nome_reduz');
 
         if (empError) throw empError;
 
@@ -92,7 +101,9 @@ const CargaMovimentoPage: React.FC = () => {
         setProcessStates(finalEmpresas.map(emp => ({
           empresa: emp,
           file: null,
-          status: 'idle'
+          status: 'idle',
+          cargaStatus: 'idle',
+          calcStatus: 'idle'
         })));
       } catch (err: any) {
         console.error("Erro ao buscar empresas:", err);
@@ -107,13 +118,21 @@ const CargaMovimentoPage: React.FC = () => {
 
   const handleFileChange = (empresaId: string, file: File | null) => {
     setProcessStates(prev => prev.map(state => 
-      state.empresa.id === empresaId ? { ...state, file, status: file ? 'waiting' : 'idle', error: undefined } : state
+      state.empresa.id === empresaId ? { 
+        ...state, 
+        file, 
+        status: file ? 'waiting' : 'idle', 
+        cargaStatus: 'idle',
+        calcStatus: 'idle',
+        cargaError: undefined,
+        calcError: undefined
+      } : state
     ));
   };
 
-  const updateEmpresaStatus = (empresaId: string, status: ProcessStatus, error?: string) => {
+  const updateState = (empresaId: string, updates: Partial<EmpresaProcessState>) => {
     setProcessStates(prev => prev.map(state => 
-      state.empresa.id === empresaId ? { ...state, status, error } : state
+      state.empresa.id === empresaId ? { ...state, ...updates } : state
     ));
   };
 
@@ -125,50 +144,100 @@ const CargaMovimentoPage: React.FC = () => {
 
     try {
       // 1. Uploading
-      updateEmpresaStatus(empresa.id, 'uploading');
+      updateState(empresa.id, { status: 'processing', cargaStatus: 'uploading', cargaError: undefined, calcError: undefined });
       const timestamp = Date.now();
       const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
       const filePath = `${selectedClient.id}/${empresa.emp_cnpj_raiz}/${periodo}/${timestamp}_${safeFileName}`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('movimento_upload')
+        .from('movto_upload')
         .upload(filePath, file, { cacheControl: '3600', upsert: false });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        updateState(empresa.id, { status: 'error', cargaStatus: 'error', cargaError: 'Erro de upload' });
+        throw uploadError;
+      }
+
+      updateState(empresa.id, { cargaStatus: 'upload_success' });
+      await new Promise(resolve => setTimeout(resolve, 500)); // Small delay to show status
 
       // 2. Processing (Webhook)
-      updateEmpresaStatus(empresa.id, 'processing');
-      const webhookUrl = (import.meta as any).env?.VITE_MOVIMENTO_WEBHOOK_URL || 'https://webhook.synapiens.com.br/webhook/movimento-upsert';
+      updateState(empresa.id, { cargaStatus: 'processing' });
+      const webhookUrl = (import.meta as any).env?.VITE_MOVTO_WEBHOOK_URL || 'https://webhook.synapiens.com.br/webhook/movto_upsert';
       
       const payload = {
         file_path: uploadData?.path || filePath,
-        bucket: "movimento_upload",
+        bucket: "movto_upload",
+        table: "dre_carga_contabil",
+        on_conflict: "id",
         cliente_id: selectedClient.id,
-        empresa_id: empresa.id,
-        periodo: periodo,
-        cnpj_raiz: empresa.emp_cnpj_raiz
+        emp_cod_integra: empresa.emp_cod_integra,
+        cnpj_emp: empresa.emp_cnpj,
+        crg_emp_periodo_ano: selectedYear,
+        crg_emp_periodo_mes: selectedMonth
       };
 
-      const webhookRes = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      let webhookRes;
+      try {
+        webhookRes = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch (fetchErr: any) {
+        console.error("Erro de conexão com o webhook:", fetchErr);
+        throw new Error(`Falha de conexão com o servidor (CORS ou rede): ${fetchErr.message}`);
+      }
 
       if (!webhookRes.ok) {
         const detail = await webhookRes.text().catch(() => '');
-        throw new Error(`Erro no processamento: ${webhookRes.status} ${detail}`);
+        throw new Error(`Erro na carga: ${webhookRes.status} ${detail}`);
       }
 
-      // 3. Calculating (Simulated step as requested)
-      updateEmpresaStatus(empresa.id, 'calculating');
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate calculation time
+      updateState(empresa.id, { cargaStatus: 'success' });
 
-      updateEmpresaStatus(empresa.id, 'success');
+      // 3. Calculating (Second Webhook)
+      updateState(empresa.id, { calcStatus: 'processing' });
+      const calcWebhookUrl = (import.meta as any).env?.VITE_CALC_WEBHOOK_URL || 'https://webhook.synapiens.com.br/webhook/calc_dre';
+      
+      const calcPayload = {
+        ...payload,
+        table: "dre_calc_contabil"
+      };
+
+      let calcWebhookRes;
+      try {
+        calcWebhookRes = await fetch(calcWebhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(calcPayload),
+        });
+      } catch (calcErr: any) {
+        console.error("Erro de conexão com o webhook de cálculo:", calcErr);
+        throw new Error(`Falha de conexão com o servidor de cálculo: ${calcErr.message}`);
+      }
+
+      if (!calcWebhookRes.ok) {
+        const detail = await calcWebhookRes.text().catch(() => '');
+        throw new Error(`Erro no cálculo: ${calcWebhookRes.status} ${detail}`);
+      }
+
+      updateState(empresa.id, { status: 'success', calcStatus: 'success' });
     } catch (err: any) {
       console.error(`Erro processando ${empresa.emp_nome}:`, err);
-      updateEmpresaStatus(empresa.id, 'error', err.message);
-      throw err; // Re-throw to stop batch if needed or handle in loop
+      const errorMessage = err.message?.includes('Erro de upload') ? 'Erro de upload' : (err.message || 'Erro na carga');
+      
+      setProcessStates(prev => prev.map(s => {
+        if (s.empresa.id === empresa.id) {
+          if (s.calcStatus === 'processing') {
+             return { ...s, status: 'error', calcStatus: 'error', calcError: errorMessage };
+          } else {
+             return { ...s, status: 'error', cargaStatus: 'error', cargaError: errorMessage };
+          }
+        }
+        return s;
+      }));
+      throw err;
     }
   };
 
@@ -196,27 +265,43 @@ const CargaMovimentoPage: React.FC = () => {
     setGlobalSuccess("Processamento em lote concluído.");
   };
 
-  const getStatusIcon = (status: ProcessStatus) => {
+  const getCargaStatusIcon = (status: CargaStatus) => {
     switch (status) {
-      case 'idle': return <Circle className="w-5 h-5 text-gray-600" />;
-      case 'waiting': return <Clock className="w-5 h-5 text-indigo-400" />;
-      case 'uploading': return <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />;
-      case 'processing': return <Loader2 className="w-5 h-5 text-yellow-400 animate-spin" />;
-      case 'calculating': return <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />;
-      case 'success': return <CheckCircle2 className="w-5 h-5 text-green-500" />;
-      case 'error': return <AlertCircle className="w-5 h-5 text-red-500" />;
+      case 'idle': return <Circle className="w-4 h-4 text-gray-600" />;
+      case 'uploading': return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
+      case 'upload_success': return <CheckCircle2 className="w-4 h-4 text-blue-400" />;
+      case 'processing': return <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />;
+      case 'success': return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+      case 'error': return <AlertCircle className="w-4 h-4 text-red-500" />;
     }
   };
 
-  const getStatusText = (status: ProcessStatus) => {
+  const getCargaStatusText = (status: CargaStatus) => {
     switch (status) {
-      case 'idle': return 'Aguardando arquivo';
-      case 'waiting': return 'Pronto para processar';
+      case 'idle': return 'Aguardando...';
       case 'uploading': return 'Enviando arquivo...';
-      case 'processing': return 'Processando carga...';
-      case 'calculating': return 'Executando cálculos...';
-      case 'success': return 'Concluído com sucesso';
-      case 'error': return 'Falha no processamento';
+      case 'upload_success': return 'Upload efetuado';
+      case 'processing': return 'Início da carga...';
+      case 'success': return 'Carga executada com sucesso';
+      case 'error': return 'Erro na carga';
+    }
+  };
+
+  const getCalcStatusIcon = (status: CalcStatus) => {
+    switch (status) {
+      case 'idle': return <Circle className="w-4 h-4 text-gray-600" />;
+      case 'processing': return <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />;
+      case 'success': return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+      case 'error': return <AlertCircle className="w-4 h-4 text-red-500" />;
+    }
+  };
+
+  const getCalcStatusText = (status: CalcStatus) => {
+    switch (status) {
+      case 'idle': return 'Aguardando...';
+      case 'processing': return 'Executando cálculos...';
+      case 'success': return 'Cálculo executado com sucesso';
+      case 'error': return 'Erro no cálculo';
     }
   };
 
@@ -269,8 +354,28 @@ const CargaMovimentoPage: React.FC = () => {
       )}
 
       <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden">
-        <div className="p-4 bg-gray-700/30 border-b border-gray-700 flex justify-between items-center">
-          <h3 className="font-semibold text-white">Empresas Disponíveis ({processStates.length})</h3>
+        <div className="p-4 bg-gray-700/30 border-b border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-4 w-full sm:w-auto">
+            <h3 className="font-semibold text-white whitespace-nowrap">Empresas Disponíveis ({processStates.length})</h3>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                type="text"
+                placeholder="Buscar por nome, integra ou cnpj..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-1.5 bg-gray-800 border border-gray-600 rounded-lg text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+              />
+              {searchTerm && (
+                <button 
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
           <button
             onClick={handleBatchProcess}
             disabled={isBatchProcessing || processStates.every(s => !s.file || s.status === 'success')}
@@ -292,29 +397,91 @@ const CargaMovimentoPage: React.FC = () => {
               <p>Nenhuma empresa encontrada para este cliente.</p>
             </div>
           ) : (
-            processStates.map((state) => (
-              <div key={state.empresa.id} className={`p-4 transition-colors ${state.status === 'uploading' || state.status === 'processing' || state.status === 'calculating' ? 'bg-indigo-900/10' : 'hover:bg-gray-700/30'}`}>
-                <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+            processStates
+              .filter(state => {
+                const term = searchTerm.toLowerCase();
+                return (
+                  state.empresa.emp_nome_reduz?.toLowerCase().includes(term) ||
+                  state.empresa.emp_nome_cmpl?.toLowerCase().includes(term) ||
+                  state.empresa.emp_cod_integra?.toLowerCase().includes(term) ||
+                  state.empresa.emp_cnpj?.toLowerCase().includes(term) ||
+                  state.empresa.emp_nome?.toLowerCase().includes(term)
+                );
+              })
+              .map((state) => (
+              <div key={state.empresa.id} className={`p-4 transition-colors ${state.status === 'processing' ? 'bg-indigo-900/10' : 'hover:bg-gray-700/30'}`}>
+                <div className="flex flex-col lg:flex-row lg:items-start gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-white truncate">{state.empresa.emp_nome}</h4>
+                      {state.status === 'success' && <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />}
+                      {state.status === 'error' && <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />}
+                      
+                      <span className="text-xs font-bold text-indigo-400 font-mono bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-800/50">
+                        {state.empresa.emp_cod_integra || '---'}
+                      </span>
+                      <h4 className="font-bold text-white truncate">{state.empresa.emp_nome_reduz || state.empresa.emp_nome}</h4>
+                      {state.empresa.emp_nome_cmpl && state.empresa.emp_nome_cmpl !== state.empresa.emp_nome_reduz && (
+                        <span className="text-xs text-gray-400 truncate hidden md:inline">
+                          ({state.empresa.emp_nome_cmpl})
+                        </span>
+                      )}
                       <span className="text-xs text-gray-500 font-mono bg-gray-900 px-2 py-0.5 rounded border border-gray-700">{state.empresa.emp_cnpj}</span>
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      {getStatusIcon(state.status)}
-                      <span className={`text-xs font-medium ${
-                        state.status === 'success' ? 'text-green-500' : 
-                        state.status === 'error' ? 'text-red-500' : 
-                        state.status === 'idle' ? 'text-gray-500' : 'text-indigo-400'
-                      }`}>
-                        {getStatusText(state.status)}
-                      </span>
-                      {state.error && <span className="text-xs text-red-400 italic truncate">— {state.error}</span>}
+                    
+                    {/* Status Sequences */}
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Carga Sequence */}
+                      <div className="bg-gray-800/50 rounded p-2 border border-gray-700/50">
+                        <div className="text-xs font-bold text-gray-500 uppercase mb-1">1. Carga de Dados</div>
+                        <div className="flex items-center gap-2">
+                          {getCargaStatusIcon(state.cargaStatus)}
+                          <span className={`text-xs font-medium ${
+                            state.cargaStatus === 'success' ? 'text-green-500' : 
+                            state.cargaStatus === 'error' ? 'text-red-500' : 
+                            state.cargaStatus === 'idle' ? 'text-gray-500' : 'text-blue-400'
+                          }`}>
+                            {getCargaStatusText(state.cargaStatus)}
+                          </span>
+                        </div>
+                        {state.cargaError && <div className="text-xs text-red-400 italic mt-1 truncate" title={state.cargaError}>— {state.cargaError}</div>}
+                        
+                        {/* Progress Bar Carga */}
+                        {(state.cargaStatus === 'uploading' || state.cargaStatus === 'processing') && (
+                          <div className="mt-2 h-1 w-full bg-gray-700 rounded-full overflow-hidden">
+                            <div className={`h-full animate-progress-indefinite ${
+                              state.cargaStatus === 'uploading' ? 'bg-blue-500' : 'bg-yellow-500'
+                            }`} />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Calc Sequence */}
+                      <div className="bg-gray-800/50 rounded p-2 border border-gray-700/50">
+                        <div className="text-xs font-bold text-gray-500 uppercase mb-1">2. Cálculo DRE</div>
+                        <div className="flex items-center gap-2">
+                          {getCalcStatusIcon(state.calcStatus)}
+                          <span className={`text-xs font-medium ${
+                            state.calcStatus === 'success' ? 'text-green-500' : 
+                            state.calcStatus === 'error' ? 'text-red-500' : 
+                            state.calcStatus === 'idle' ? 'text-gray-500' : 'text-purple-400'
+                          }`}>
+                            {getCalcStatusText(state.calcStatus)}
+                          </span>
+                        </div>
+                        {state.calcError && <div className="text-xs text-red-400 italic mt-1 truncate" title={state.calcError}>— {state.calcError}</div>}
+                        
+                        {/* Progress Bar Calc */}
+                        {state.calcStatus === 'processing' && (
+                          <div className="mt-2 h-1 w-full bg-gray-700 rounded-full overflow-hidden">
+                            <div className="h-full animate-progress-indefinite bg-purple-500" />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4">
-                    <div className="relative group">
+                  <div className="flex items-center gap-4 mt-2 lg:mt-0">
+                    <div className="relative group flex items-center gap-2">
                       <input
                         type="file"
                         id={`file-${state.empresa.id}`}
@@ -336,19 +503,19 @@ const CargaMovimentoPage: React.FC = () => {
                           {state.file ? state.file.name : 'Selecionar Arquivo'}
                         </span>
                       </label>
+
+                      {state.file && !isBatchProcessing && state.status !== 'success' && (
+                        <button
+                          onClick={() => handleFileChange(state.empresa.id, null)}
+                          className="p-2 text-gray-500 hover:text-red-400 transition-colors rounded-full hover:bg-red-900/20"
+                          title="Limpar arquivo"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
-
-                {/* Progress Bar for active item */}
-                {(state.status === 'uploading' || state.status === 'processing' || state.status === 'calculating') && (
-                  <div className="mt-4 h-1 w-full bg-gray-700 rounded-full overflow-hidden">
-                    <div className={`h-full animate-progress-indefinite ${
-                      state.status === 'uploading' ? 'bg-blue-500' : 
-                      state.status === 'processing' ? 'bg-yellow-500' : 'bg-purple-500'
-                    }`} />
-                  </div>
-                )}
               </div>
             ))
           )}

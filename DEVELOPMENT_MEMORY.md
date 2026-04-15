@@ -89,3 +89,23 @@ Implementar um menu dropdown no header ao clicar no nome do usuário, oferecendo
 - **Modal de Troca de Senha:** Implementado um modal que solicita a senha atual, nova senha e confirmação. A senha atual é validada via re-autenticação no Supabase antes da atualização.
 - **Logout Integrado:** A opção de logout foi movida para dentro do menu do usuário, mantendo a funcionalidade de encerramento de sessão.
 - **Melhoria de UX:** Adicionado fechamento automático do menu ao clicar fora dele e animações de entrada para o dropdown e modal.
+
+## Sessão: Carga de Movimento Serializada e Melhorias de UX (Abril 2024)
+
+### Objetivo
+Refatorar a tela de Carga de Movimento para suportar processamento serializado linha a linha, melhorando a visualização dos dados da empresa e a integração com o novo endpoint de webhook.
+
+### Mudanças Implementadas
+- **Tela de Carga de Movimento (CargaMovimentoPage.tsx):**
+    - **Visualização de Empresas:** Agora exibe `emp_cod_integra` (Integra), `emp_nome_reduz` (Reduzido), `emp_nome_cmpl` (Complemento, se diferente do reduzido) e `emp_cnpj` (CNPJ).
+    - **Filtro de Busca:** Adicionado um campo de busca para filtrar empresas por código de integração, nome reduzido, complemento ou CNPJ.
+    - **Limpeza de Arquivo:** Adicionado um botão (ícone X) ao lado do seletor de arquivo de cada linha para remover o arquivo selecionado.
+    - **Processamento Serializado:** Ao clicar em "Processar Carga", o sistema itera sobre cada empresa com arquivo selecionado, fazendo o upload e chamando o webhook de forma sequencial.
+    - **Feedback de Status:** Atualização em tempo real do status de cada linha (`uploading` -> `upload_success` -> `processing` -> `success` / `error`).
+- **Integração de Webhook:**
+    - **Novo Endpoint:** Atualizado para `https://webhook.synapiens.com.br/webhook/movto_upsert`.
+    - **Novo Payload:** Inclui `file_path`, `bucket` (`movto_upload`), `table`, `on_conflict`, `cliente_id`, `emp_cod_integra`, `cnpj_emp`, `crg_emp_periodo_ano` e `crg_emp_periodo_mes`.
+    - **Tratamento de Erros:** Melhorado o tratamento de erros do `fetch` para identificar claramente problemas de CORS ou indisponibilidade do servidor.
+- **Carga de Plano Contábil:**
+    - Atualizado o endpoint de fallback para `https://webhook.synapiens.com.br/webhook/csv-upsert`.
+    - Adicionados `cliente_id`, `emp_nome_reduzido` e `cnpj_raiz` ao payload.

@@ -92,20 +92,23 @@ A aplicação se integra com um backend de processamento (n8n) via webhooks.
 - **Query Params:** `cntr` (Código de controle do template).
 - **Uso:** Utilizado na tela de edição de templates para visualizar como a estrutura será processada antes de aplicá-la oficialmente.
 
-### 3.4 Carga de Movimento
-- **Endpoint:** `POST https://webhook.synapiens.com.br/webhook/movimento-upsert`
+### 3.4 Carga de Movimento Serializada
+- **Endpoint:** `POST https://webhook.synapiens.com.br/webhook/movto_upsert`
 - **Payload:**
     ```json
     {
-      "file_path": "caminho/no/storage.csv",
-      "bucket": "movimento_upload",
+      "file_path": "caminho/do/arquivo/no/storage.csv",
+      "bucket": "movto_upload",
+      "table": "dre_carga_contabil",
+      "on_conflict": "id",
       "cliente_id": "ID_DO_CLIENTE",
-      "empresa_id": "ID_DA_EMPRESA",
-      "periodo": "YYYYMM",
-      "cnpj_raiz": "8_DIGITOS"
+      "emp_cod_integra": "CODIGO_INTEGRACAO",
+      "cnpj_emp": "CNPJ_COMPLETO",
+      "crg_emp_periodo_ano": 2026,
+      "crg_emp_periodo_mes": 4
     }
     ```
-- **Fluxo:** Similar à carga de plano, mas focado em dados transacionais mensais por empresa.
+- **Fluxo:** O frontend lista as empresas do cliente selecionado que o usuário possui permissão. O usuário associa os arquivos de carga a cada empresa por período. Ao processar, o frontend faz o upload para o bucket `movto_upload` e dispara o webhook para cada empresa de forma serializada (linha a linha). O status é atualizado em tempo real na interface (Upload efetuado -> Início da carga -> Sucesso/Erro).
 
 ---
 

@@ -151,7 +151,7 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
     } finally {
       setLoading(false);
     }
-  }, [filtroNome, user, selectedClient]);
+  }, [filtroNome, user?.id, selectedClient?.id, profile?.function]);
 
   useEffect(() => {
     const handler = setTimeout(() => fetchData(), 300);

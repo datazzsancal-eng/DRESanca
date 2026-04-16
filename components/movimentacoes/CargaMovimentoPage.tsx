@@ -48,13 +48,22 @@ const CargaMovimentoPage: React.FC = () => {
     { value: 10, label: 'Outubro' }, { value: 11, label: 'Novembro' }, { value: 12, label: 'Dezembro' },
   ];
 
+  const lastLoadedClientId = useRef<string | null>(null);
+
   useEffect(() => {
     const fetchEmpresasPermitidas = async () => {
       if (!selectedClient || !user) {
         setEmpresas([]);
         setProcessStates([]);
+        lastLoadedClientId.current = null;
         return;
       }
+
+      // Prevent redundant fetches if the client hasn't changed
+      if (lastLoadedClientId.current === selectedClient.id && empresas.length > 0) {
+        return;
+      }
+
       setLoading(true);
       setGlobalError(null);
 
@@ -105,6 +114,8 @@ const CargaMovimentoPage: React.FC = () => {
           cargaStatus: 'idle',
           calcStatus: 'idle'
         })));
+        
+        lastLoadedClientId.current = selectedClient.id;
       } catch (err: any) {
         console.error("Erro ao buscar empresas:", err);
         setGlobalError(`Falha ao carregar empresas: ${err.message}`);
@@ -114,7 +125,7 @@ const CargaMovimentoPage: React.FC = () => {
     };
 
     fetchEmpresasPermitidas();
-  }, [selectedClient, user, profile]);
+  }, [selectedClient?.id, user?.id, profile?.function]);
 
   const handleFileChange = (empresaId: string, file: File | null) => {
     setProcessStates(prev => prev.map(state => 
@@ -311,7 +322,7 @@ const CargaMovimentoPage: React.FC = () => {
     <div className="p-4 bg-gray-900 min-h-screen text-gray-300 space-y-6">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
         <div>
-          <h2 className="text-2xl font-bold text-white">Carga de Movimento Serializada</h2>
+          <h2 className="text-2xl font-bold text-white">Carga do Movimento</h2>
           <p className="text-gray-400 mt-1">{selectedClient?.cli_nome || 'Selecione um cliente'}</p>
         </div>
         

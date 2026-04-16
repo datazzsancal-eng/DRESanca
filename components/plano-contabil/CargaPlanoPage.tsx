@@ -18,13 +18,22 @@ const CargaPlanoPage: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const lastLoadedClientId = useRef<string | null>(null);
+
   useEffect(() => {
     const fetchEmpresasRaiz = async () => {
       if (!selectedClient || !user) {
         setEmpresasRaiz([]);
         setSelectedCnpjRaiz('');
+        lastLoadedClientId.current = null;
         return;
       }
+
+      // Prevent redundant fetches if the client hasn't changed
+      if (lastLoadedClientId.current === selectedClient.id && empresasRaiz.length > 0) {
+        return;
+      }
+
       setLoading(true);
       setError(null);
       setSuccess(null);
@@ -76,17 +85,17 @@ const CargaPlanoPage: React.FC = () => {
             setEmpresasRaiz(filteredRoots);
         }
 
+        lastLoadedClientId.current = selectedClient.id;
       } catch (err: any) {
         console.error("Erro ao buscar empresas permitidas:", err);
         setError(`Falha ao carregar lista de empresas: ${err.message}`);
         setEmpresasRaiz([]);
       } finally {
-        setSelectedCnpjRaiz('');
         setLoading(false);
       }
     };
     fetchEmpresasRaiz();
-  }, [selectedClient, user]);
+  }, [selectedClient?.id, user?.id, profile?.function]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);

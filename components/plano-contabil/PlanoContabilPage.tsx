@@ -119,7 +119,7 @@ const PlanoContabilPage: React.FC = () => {
       }
     };
     fetchEmpresasRaiz();
-  }, [selectedClient, user]);
+  }, [selectedClient?.id, user?.id, profile?.function]);
 
   // Fetch total count when client/cnpj changes
   useEffect(() => {

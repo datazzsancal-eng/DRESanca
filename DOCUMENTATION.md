@@ -92,9 +92,10 @@ A aplicação se integra com um backend de processamento (n8n) via webhooks.
 - **Query Params:** `cntr` (Código de controle do template).
 - **Uso:** Utilizado na tela de edição de templates para visualizar como a estrutura será processada antes de aplicá-la oficialmente.
 
-### 3.4 Carga de Movimento Serializada (Fluxo Carga + Cálculo)
-- **Endpoint 1 (Carga):** `POST https://webhook.synapiens.com.br/webhook/movto_upsert`
-- **Endpoint 2 (Cálculo):** `POST https://webhook.synapiens.com.br/webhook/calc_dre`
+### 3.4 Carga do Movimento (Fluxo Carga + Cálculo)
+- **Carga do Movimento:** Interface para upload de arquivos de movimentação contábil por empresa e período.
+- **Processamento em Duas Etapas:** Fluxo sequencial que realiza a carga dos dados (`movto_upsert`) e, em seguida, dispara o cálculo do DRE (`calc_dre`).
+- **Estabilidade de Interface:** Implementada proteção contra recarregamentos acidentais ao alternar abas do navegador, preservando a seleção de arquivos e o estado do processamento.
 - **Payload (Carga):**
     ```json
     {
@@ -132,6 +133,24 @@ A aplicação se integra com um backend de processamento (n8n) via webhooks.
 
 ---
 
+## 4. Lógica de Cálculos e Indicadores
+
+### 4.1 Cálculo do Delta (Variação Mensal)
+Nos cards de resumo do Dashboard, a variação percentual (Delta) é calculada comparando o desempenho do mês atual com o mês imediatamente anterior dentro do período selecionado.
+
+**Fórmula:**
+$$Delta = \frac{(V_{atual} - V_{anterior})}{|V_{anterior}|} \times 100$$
+
+**Regras de Negócio:**
+- **V_atual:** Valor da conta no mês selecionado (ex: se o período é 202405, usa-se o valor de Maio).
+- **V_anterior:** Valor da conta no mês anterior (ex: Abril).
+- **Tratamento de Zero:**
+    - Se $V_{anterior} = 0$ e $V_{atual} \neq 0$, o Delta é considerado **100%**.
+    - Se ambos forem zero, o Delta é **0%**.
+- **Sinalização:** O uso do valor absoluto ($|V_{anterior}|$) no denominador garante que o sentido da variação (positivo ou negativo) seja preservado corretamente, mesmo em contas que operam com valores negativos (como deduções ou despesas).
+
+---
+
 ## 6. Fluxo Esperado da Aplicação
 
 O fluxo de trabalho típico de um usuário no DRE View segue esta sequência:
@@ -152,10 +171,10 @@ O fluxo de trabalho típico de um usuário no DRE View segue esta sequência:
 ## 10. Otimização de Performance e Estabilidade
 
 ### 10.1 Persistência de Sessão e Prevenção de Refresh
-Para evitar que a aplicação recarregue ou resete o estado ao alternar entre abas do navegador ou aplicativos externos (como Excel), o `AuthContext` implementa uma lógica de proteção:
-- **`lastLoadedUserId` (Ref):** Rastreia o ID do último usuário cujos dados foram carregados com sucesso.
-- **`profileRef` (Ref):** Mantém uma referência síncrona ao perfil do usuário para evitar problemas de "closure" em listeners de eventos assíncronos.
-- **Otimização de Listener:** O listener `onAuthStateChange` do Supabase ignora eventos de revalidação de token ou sessões já carregadas, disparando a recarga de dados apenas quando há uma mudança real de identidade ou ausência de perfil. Isso garante que a aplicação permaneça estável e responsiva durante o uso multitarefa.
+Para evitar que a aplicação recarregue ou resete o estado ao alternar entre abas do navegador ou aplicativos externos (como Excel), a aplicação implementa uma lógica de proteção em múltiplos níveis:
+- **AuthContext:** Utiliza `lastLoadedUserId` (Ref) e `profileRef` (Ref) para rastrear o ID do último usuário e o perfil, ignorando eventos de revalidação de token que não alteram a identidade do usuário.
+- **Carga do Movimento & Carga de Plano:** Utilizam `lastLoadedClientId` (Ref) para garantir que a lista de empresas e arquivos selecionados não sejam limpos ao retornar para a aba, a menos que o cliente selecionado mude efetivamente.
+- **Estabilidade de Dependências:** Hooks de busca de dados utilizam propriedades primitivas (`user?.id`, `selectedClient?.id`) em vez de objetos complexos nos arrays de dependência, prevenindo disparos de `useEffect` causados por novas instâncias de objetos com os mesmos dados.
 
 Atualmente, a aplicação adota um modelo de **Hierarquia Funcional** baseada em permissões de dados, em vez de papéis (roles) fixos de sistema.
 

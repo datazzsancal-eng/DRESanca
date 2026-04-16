@@ -154,7 +154,7 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
       }
     };
     fetchInitialData();
-  }, [visaoId, user, selectedClient]);
+  }, [visaoId, user?.id, selectedClient?.id, profile?.function]);
 
   // Fetch companies and CNPJs when client changes
   useEffect(() => {

@@ -39,7 +39,7 @@ Todas as telas de cadastro permitem Adicionar, Editar, Visualizar e Excluir regi
     - Funcionalidade para copiar templates existentes.
 
 ### 4. Módulo de Movimentações
-- **Carga de Movimento:**
+- **Carga do Movimento:**
     - Interface para upload de arquivos de movimentação contábil por empresa e período.
     - **Processamento em Duas Etapas:** Fluxo sequencial que realiza a carga dos dados (`movto_upsert`) e, em seguida, dispara o cálculo do DRE (`calc_dre`).
     - **Monitoramento em Tempo Real:** Feedback visual detalhado para cada etapa do processo, com indicadores de sucesso/erro e barras de progresso individuais.

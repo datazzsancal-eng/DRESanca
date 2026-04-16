@@ -94,7 +94,7 @@ const ClientePage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filtroNome, user, profile]);
+  }, [filtroNome, user?.id, profile?.function]);
 
   useEffect(() => {
     const handler = setTimeout(() => {

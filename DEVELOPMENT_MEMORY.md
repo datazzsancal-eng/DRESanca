@@ -47,7 +47,7 @@ Aprimorar a interface de gestão de usuários, implementar regras de acesso din�
 Implementar a funcionalidade de carga de movimentos mensais por empresa, permitindo o processamento de dados transacionais para o DRE.
 
 ### Mudanças Implementadas
-- **Novo Menu "Movimentações":** Adicionado à Sidebar com a sub-página "Carga de Movimento".
+- **Novo Menu "Movimentações":** Adicionado à Sidebar com a sub-página "Carga do Movimento".
 - **Página de Carga (CargaMovimentoPage.tsx):**
     - Seleção de Empresa: Combo populado com empresas permitidas para o usuário no cliente selecionado.
     - Seleção de Período: Combos de Mês (1-12) e Ano (Corrente/Anterior), com valores padrão baseados na data atual.
@@ -90,13 +90,13 @@ Implementar um menu dropdown no header ao clicar no nome do usuário, oferecendo
 - **Logout Integrado:** A opção de logout foi movida para dentro do menu do usuário, mantendo a funcionalidade de encerramento de sessão.
 - **Melhoria de UX:** Adicionado fechamento automático do menu ao clicar fora dele e animações de entrada para o dropdown e modal.
 
-## Sessão: Carga de Movimento Serializada e Melhorias de UX (Abril 2024)
+## Sessão: Carga do Movimento Serializada e Melhorias de UX (Abril 2024)
 
 ### Objetivo
-Refatorar a tela de Carga de Movimento para suportar processamento serializado linha a linha, melhorando a visualização dos dados da empresa e a integração com o novo endpoint de webhook.
+Refatorar a tela de Carga do Movimento para suportar processamento serializado linha a linha, melhorando a visualização dos dados da empresa e a integração com o novo endpoint de webhook.
 
 ### Mudanças Implementadas
-- **Tela de Carga de Movimento (CargaMovimentoPage.tsx):**
+- **Tela de Carga do Movimento (CargaMovimentoPage.tsx):**
     - **Visualização de Empresas:** Agora exibe `emp_cod_integra` (Integra), `emp_nome_reduz` (Reduzido), `emp_nome_cmpl` (Complemento, se diferente do reduzido) e `emp_cnpj` (CNPJ).
     - **Filtro de Busca:** Adicionado um campo de busca para filtrar empresas por código de integração, nome reduzido, complemento ou CNPJ.
     - **Limpeza de Arquivo:** Adicionado um botão (ícone X) ao lado do seletor de arquivo de cada linha para remover o arquivo selecionado.
@@ -122,7 +122,7 @@ Resolver o problema de refresh inesperado ao alternar abas do navegador e implem
 - **Uso de Refs para Estado:** Introduzidos `lastLoadedUserId` e `profileRef` para garantir que o listener de autenticação do Supabase tenha acesso a dados síncronos, evitando disparos falsos de carregamento devido a "closures" obsoletas.
 - **Logs de Diagnóstico:** Adicionados logs prefixados com `[AuthContext]` para monitorar o ciclo de vida da sessão e carregamento de dados.
 
-#### 2. Fluxo de Carga de Movimento (CargaMovimentoPage.tsx)
+#### 2. Fluxo de Carga do Movimento (CargaMovimentoPage.tsx)
 - **Processamento Sequencial:** Refatorada a lógica de processamento para executar dois webhooks em sequência:
     1. `movto_upsert` (Carga de dados brutos).
     2. `calc_dre` (Processamento de cálculos contábeis).
@@ -133,3 +133,22 @@ Resolver o problema de refresh inesperado ao alternar abas do navegador e implem
 ### Decisões Técnicas
 - **Serialização de Processos:** Optou-se por não disparar o cálculo se a carga falhar, garantindo a integridade dos dados processados.
 - **Controle de UI:** Uso de estados de status independentes (`cargaStatus`, `calcStatus`) para fornecer feedback preciso sobre o estágio atual de cada empresa no lote de processamento.
+
+## Sessão: Refinamento de Estabilidade e Documentação de Cálculos (Abril 2024)
+
+### Objetivo
+Garantir a estabilidade total da interface ao alternar abas e documentar as fórmulas de cálculo utilizadas no Dashboard.
+
+### Mudanças Implementadas
+
+#### 1. Estabilização de Dependências (useEffect/useCallback)
+- **Hooks de Busca:** Refatorados os arrays de dependência em `CargaMovimentoPage`, `CargaPlanoPage`, `VisaoPage`, `EmpresaPage` e `PlanoContabilPage`.
+- **Uso de IDs Primitivos:** Substituídos objetos complexos (`user`, `selectedClient`) por suas propriedades estáveis (`user?.id`, `selectedClient?.id`) nos arrays de dependência, evitando re-execuções desnecessárias causadas por novas instâncias de objetos com os mesmos dados.
+- **lastLoadedClientId (Ref):** Implementada proteção adicional em telas de carga para evitar o reset do estado (lista de empresas e arquivos selecionados) quando o usuário retorna à aba do navegador.
+
+#### 2. Documentação Técnica
+- **Cálculo do Delta:** Adicionada seção detalhando a fórmula de variação percentual mensal utilizada nos cards do Dashboard, incluindo o tratamento de valores nulos e o uso de valor absoluto para contas negativas.
+- **Nomenclatura:** Unificada a nomenclatura de "Carga do Movimento" em toda a documentação e interface.
+
+### Decisões Técnicas
+- **Imutabilidade Referencial:** Priorizou-se a estabilidade da UI em detrimento de buscas agressivas, garantindo que o usuário não perca dados de formulários (como arquivos selecionados) durante o uso multitarefa.

@@ -130,7 +130,7 @@ const EmpresaPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedClient, user, filtroNome, filtroCodigo]);
+  }, [selectedClient?.id, user?.id, profile?.function, filtroNome, filtroCodigo]);
 
   useEffect(() => {
     const handler = setTimeout(() => {

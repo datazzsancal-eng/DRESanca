@@ -157,14 +157,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('dre_selected_client');
   }, []);
 
+  const lastLoadedUserId = useRef<string | null>(null);
+
   useEffect(() => {
     let mounted = true;
 
     const loadUserData = async (sessionUser: User) => {
+      // Prevent redundant loads for the same user if profile is already present
+      if (lastLoadedUserId.current === sessionUser.id && profile) {
+        setLoading(false);
+        return;
+      }
+
       try {
         // Fetch profile first to get the user function
         const profileData = await fetchProfile(sessionUser.id);
         await fetchUserClients(sessionUser.id, profileData?.function || null, false);
+        lastLoadedUserId.current = sessionUser.id;
       } catch (err) {
         console.error("Error fetching user data:", err);
       } finally {
@@ -213,9 +222,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(session?.user ?? null);
 
       if (event === 'SIGNED_IN' && session?.user) {
-        setLoading(true);
-        loadUserData(session.user);
+        // Only trigger loading/fetch if user changed or profile is missing
+        if (session.user.id !== lastLoadedUserId.current || !profile) {
+          setLoading(true);
+          loadUserData(session.user);
+        }
       } else if (event === 'SIGNED_OUT') {
+        lastLoadedUserId.current = null;
         setProfile(null);
         setAvailableClients([]);
         setSelectedClientState(null);

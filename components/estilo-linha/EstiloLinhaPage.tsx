@@ -199,7 +199,7 @@ const EstiloLinhaPage: React.FC = () => {
         const { checked } = e.target as HTMLInputElement;
         setFormData(prev => ({ ...prev, [name]: checked ? 'S' : 'N' } as any));
     } else if (name === 'estilo_nome') {
-        setFormData(prev => ({ ...prev, [name]: value.toUpperCase() } as any));
+        setFormData(prev => ({ ...prev, [name]: value } as any));
     } else if (type === 'number') {
          setFormData(prev => ({ ...prev, [name]: Number(value) } as any));
     } else {
@@ -211,7 +211,7 @@ const EstiloLinhaPage: React.FC = () => {
     e.preventDefault();
     
     const payload = {
-      estilo_nome: formData.estilo_nome || null,
+      estilo_nome: formData.estilo_nome?.toUpperCase() || null,
       estilo_ativo_sn: formData.estilo_ativo_sn,
       est_tipg_tela: formData.est_tipg_tela,
       est_fdo_tela: formData.est_fdo_tela,
@@ -340,8 +340,8 @@ const EstiloLinhaPage: React.FC = () => {
                 type="text"
                 placeholder="Buscar por nome..."
                 value={filtroNome}
-                onChange={(e) => setFiltroNome(e.target.value.toUpperCase())}
-                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                onChange={(e) => setFiltroNome(e.target.value)}
+                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase"
             />
             <button
               onClick={() => openModal()}
@@ -360,7 +360,7 @@ const EstiloLinhaPage: React.FC = () => {
             <div className="grid grid-cols-12 gap-4 pb-4 border-b border-gray-700">
                 <div className="col-span-8">
                     <label htmlFor="estilo_nome" className="block text-sm font-medium text-gray-300">Nome do Estilo</label>
-                    <input type="text" name="estilo_nome" id="estilo_nome" value={formData.estilo_nome} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" placeholder="EX: TOTALIZADOR" />
+                    <input type="text" name="estilo_nome" id="estilo_nome" value={formData.estilo_nome} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" placeholder="EX: TOTALIZADOR" />
                 </div>
                 <div className="col-span-2">
                      <label htmlFor="est_nivel_ident" className="block text-sm font-medium text-gray-300">Identação</label>

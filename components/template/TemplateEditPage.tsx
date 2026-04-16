@@ -293,8 +293,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
     if (type === 'checkbox') {
         setHeaderData(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked ? 'S' : 'N' }));
     } else {
-        const upperValue = name !== 'cliente_cnpj' ? value.toUpperCase() : value;
-        setHeaderData(prev => ({ ...prev, [name]: upperValue }));
+        setHeaderData(prev => ({ ...prev, [name]: value }));
     }
   };
 
@@ -386,7 +385,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
       setIsFallbackView(false);
 
       try {
-        const response = await fetch(`https://webhook.moondog-ia.tech/webhook/temp_dre?cntr=${headerData.dre_cont}`);
+        const response = await fetch(`https://webhook.synapiens.com.br/webhook/temp_dre?cntr=${headerData.dre_cont}`);
         if (response.ok) {
             const text = await response.text();
             if (text && text.trim().length > 0) {
@@ -481,6 +480,9 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
       // Step 1: Save Header
       const { id, ...headerPayload } = headerData;
       headerPayload.cliente_id = selectedClient.id; // Force context
+      headerPayload.dre_nome = headerPayload.dre_nome?.toUpperCase() || null;
+      headerPayload.dre_uso = headerPayload.dre_uso?.toUpperCase() || null;
+      headerPayload.dre_cont = headerPayload.dre_cont?.toUpperCase() || null;
 
       if (templateId === 'new') {
         const { data, error } = await supabase.from('dre_template').insert(headerPayload).select().single();
@@ -523,13 +525,13 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
             dre_linha_seq: index + 1,
             tipo_linha_id: linha.tipo_linha_id,
             estilo_linha_id: linha.estilo_linha_id,
-            dre_linha_descri: linha.dre_linha_descri,
+            dre_linha_descri: linha.dre_linha_descri?.toUpperCase(),
             dre_linha_nivel: linha.dre_linha_nivel,
             dre_linha_visivel: linha.dre_linha_visivel,
-            dre_linha_valor: linha.dre_linha_valor,
+            dre_linha_valor: linha.dre_linha_valor?.toUpperCase(),
             dre_linha_valor_fonte: tipoLinha === 'CONSTANTE' ? (linha.dre_linha_valor_fonte || 'VALOR') : null,
             visao_id: linha.visao_id || null,
-            perc_ref: linha.perc_ref || null,
+            perc_ref: linha.perc_ref?.toUpperCase(),
         };
         if (linha.id) linesToUpdate.push({ ...basePayload, id: linha.id });
         else linesToInsert.push(basePayload);
@@ -575,7 +577,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
     }
     
     if (tipo === 'FORMULA' || tipo === 'ACUM VLR ANT' || (tipo === 'CONSTANTE' && linha.dre_linha_valor_fonte === 'FORMULA')) {
-        return <input type="text" value={linha.dre_linha_valor || ''} onChange={(e) => handleLinhaChange(index, 'dre_linha_valor', e.target.value.toUpperCase())} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md" placeholder="Ex: L1-L2"/>;
+        return <input type="text" value={linha.dre_linha_valor || ''} onChange={(e) => handleLinhaChange(index, 'dre_linha_valor', e.target.value)} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md uppercase" placeholder="Ex: L1-L2"/>;
     }
 
     if (tipo === 'CONSTANTE' && linha.dre_linha_valor_fonte === 'VALOR') {
@@ -604,7 +606,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-300">Nome do Template</label>
-            <input type="text" name="dre_nome" value={headerData.dre_nome || ''} onChange={handleHeaderChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+            <input type="text" name="dre_nome" value={headerData.dre_nome || ''} onChange={handleHeaderChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300">CNPJ Raiz (Plano de Contas)</label>
@@ -615,11 +617,11 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300">Uso</label>
-            <input type="text" name="dre_uso" value={headerData.dre_uso || ''} onChange={handleHeaderChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md" />
+            <input type="text" name="dre_uso" value={headerData.dre_uso || ''} onChange={handleHeaderChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md uppercase" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300">Controle</label>
-            <input type="text" name="dre_cont" value={headerData.dre_cont || ''} onChange={handleHeaderChange} maxLength={10} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md" />
+            <input type="text" name="dre_cont" value={headerData.dre_cont || ''} onChange={handleHeaderChange} maxLength={10} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md uppercase" />
           </div>
           <div className="flex items-center pt-6">
             <label className="flex items-center space-x-2 text-sm font-medium text-gray-300 cursor-pointer">
@@ -657,7 +659,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                   <tr key={linha._internalKey} draggable onDragStart={() => dragItem.current = index} onDragEnter={() => dragOverItem.current = index} onDragEnd={handleDragSort} onDragOver={(e) => e.preventDefault()} className="hover:bg-gray-700/50 cursor-move">
                     <td className="px-2 py-1 text-center text-gray-500">☰</td>
                     <td className="px-2 py-1 text-gray-400">{index + 1}</td>
-                    <td className="px-1 py-1"><input type="text" value={linha.dre_linha_descri || ''} onChange={(e) => handleLinhaChange(index, 'dre_linha_descri', e.target.value.toUpperCase())} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md"/></td>
+                    <td className="px-1 py-1"><input type="text" value={linha.dre_linha_descri || ''} onChange={(e) => handleLinhaChange(index, 'dre_linha_descri', e.target.value)} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md uppercase"/></td>
                     <td className="px-1 py-1"><input type="number" value={linha.dre_linha_nivel || 0} onChange={(e) => handleLinhaChange(index, 'dre_linha_nivel', parseInt(e.target.value, 10))} className="w-16 px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md"/></td>
                     <td className="px-1 py-1">
                       <select value={linha.tipo_linha_id || ''} onChange={(e) => handleLinhaChange(index, 'tipo_linha_id', parseInt(e.target.value, 10))} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md">
@@ -679,7 +681,7 @@ const TemplateEditPage: React.FC<TemplateEditPageProps> = ({ templateId, onBack 
                         </select>
                       )}
                     </td>
-                    <td className="px-1 py-1"><input type="text" value={linha.perc_ref || ''} onChange={(e) => handleLinhaChange(index, 'perc_ref', e.target.value.toUpperCase())} className="w-20 px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md" maxLength={10}/></td>
+                    <td className="px-1 py-1"><input type="text" value={linha.perc_ref || ''} onChange={(e) => handleLinhaChange(index, 'perc_ref', e.target.value)} className="w-20 px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md uppercase" maxLength={10}/></td>
                     <td className="px-1 py-1">{renderValorCell(linha, index)}</td>
                     <td className="px-1 py-1">
                         <select value={linha.visao_id || ''} onChange={(e) => handleLinhaChange(index, 'visao_id', e.target.value || null)} className="w-full px-2 py-1 text-white bg-gray-700 border border-gray-600 rounded-md">

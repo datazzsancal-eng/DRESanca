@@ -93,7 +93,7 @@ const SituacaoPage: React.FC = () => {
     if (type === 'checkbox') {
       setFormData(prev => ({ ...prev, [name]: checked ? 'S' : 'N' }));
     } else {
-      setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
+      setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
 
@@ -101,9 +101,9 @@ const SituacaoPage: React.FC = () => {
     e.preventDefault();
     
     const payload = {
-      sit_desc: formData.sit_desc || null,
-      sit_grupo: formData.sit_grupo || null,
-      sit_controle: formData.sit_controle || null,
+      sit_desc: formData.sit_desc?.toUpperCase() || null,
+      sit_grupo: formData.sit_grupo?.toUpperCase() || null,
+      sit_controle: formData.sit_controle?.toUpperCase() || null,
       sit_ativa_sn: formData.sit_ativa_sn,
     };
 
@@ -214,15 +214,15 @@ const SituacaoPage: React.FC = () => {
                 type="text"
                 placeholder="Buscar por descrição..."
                 value={filtroDesc}
-                onChange={(e) => setFiltroDesc(e.target.value.toUpperCase())}
-                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                onChange={(e) => setFiltroDesc(e.target.value)}
+                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase"
             />
              <input 
                 type="text"
                 placeholder="Buscar por grupo..."
                 value={filtroGrupo}
-                onChange={(e) => setFiltroGrupo(e.target.value.toUpperCase())}
-                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                onChange={(e) => setFiltroGrupo(e.target.value)}
+                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase"
             />
             <button
               onClick={() => openModal()}
@@ -239,15 +239,15 @@ const SituacaoPage: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
                 <label htmlFor="sit_desc" className="block text-sm font-medium text-gray-300">Descrição</label>
-                <input type="text" name="sit_desc" id="sit_desc" value={formData.sit_desc} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                <input type="text" name="sit_desc" id="sit_desc" value={formData.sit_desc} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
             </div>
              <div>
                 <label htmlFor="sit_grupo" className="block text-sm font-medium text-gray-300">Grupo</label>
-                <input type="text" name="sit_grupo" id="sit_grupo" value={formData.sit_grupo} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                <input type="text" name="sit_grupo" id="sit_grupo" value={formData.sit_grupo} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
             </div>
              <div>
                 <label htmlFor="sit_controle" className="block text-sm font-medium text-gray-300">Controle</label>
-                <input type="text" name="sit_controle" id="sit_controle" value={formData.sit_controle} onChange={handleFormChange} maxLength={5} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                <input type="text" name="sit_controle" id="sit_controle" value={formData.sit_controle} onChange={handleFormChange} maxLength={5} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
             </div>
             <div className="flex items-start">
                 <div className="flex items-center h-5">

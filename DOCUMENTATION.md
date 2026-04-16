@@ -88,7 +88,7 @@ A aplicação se integra com um backend de processamento (n8n) via webhooks.
 - **Fluxo:** O frontend faz o upload para o Supabase Storage e envia o caminho para este webhook iniciar o processamento assíncrono.
 
 ### 3.3 Preview de Template
-- **Endpoint:** `GET https://webhook.moondog-ia.tech/webhook/temp_dre`
+- **Endpoint:** `GET https://webhook.synapiens.com.br/webhook/temp_dre`
 - **Query Params:** `cntr` (Código de controle do template).
 - **Uso:** Utilizado na tela de edição de templates para visualizar como a estrutura será processada antes de aplicá-la oficialmente.
 

@@ -213,7 +213,9 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
 
     if (type === 'checkbox') finalValue = (e.target as HTMLInputElement).checked ? 'S' : 'N';
     else if (name === 'tipo_visao_id') finalValue = value ? parseInt(value, 10) : null;
-    else if (name === 'vis_nome') finalValue = value.toUpperCase();
+    else if (name === 'vis_nome') {
+        finalValue = value;
+    }
     
     setHeaderData(prev => {
       const newState = { ...prev, [name]: finalValue };
@@ -265,6 +267,7 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
       
       let currentVisaoId = visaoId !== 'new' ? visaoId : undefined;
       const { id, ...headerPayload } = headerData;
+      headerPayload.vis_nome = headerPayload.vis_nome?.toUpperCase();
 
       if (visaoId === 'new') {
         const { data, error } = await supabase.from('dre_visao').insert(headerPayload).select().single();
@@ -318,7 +321,7 @@ const VisaoEditPage: React.FC<VisaoEditPageProps> = ({ visaoId, onBack }) => {
                 value={headerData.vis_nome} 
                 onChange={handleHeaderChange} 
                 disabled={isEditMode}
-                className={`w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md ${isEditMode ? 'cursor-not-allowed opacity-60' : ''}`} 
+                className={`w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md uppercase ${isEditMode ? 'cursor-not-allowed opacity-60' : ''}`} 
             />
           </div>
           <div>

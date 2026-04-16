@@ -182,9 +182,6 @@ const EmpresaPage: React.FC = () => {
         setFormData(prev => ({ ...prev, [name]: checked ? 'S' : 'N' }));
     } else {
         let finalValue = value;
-        if (type === 'text') {
-            finalValue = value.toUpperCase();
-        }
         setFormData(prev => ({ ...prev, [name]: finalValue }));
     }
   };
@@ -195,7 +192,13 @@ const EmpresaPage: React.FC = () => {
     // Ensure payload always has the correct client_id from context
     const payload = { 
         ...formData,
-        cliente_id: selectedClient?.id 
+        cliente_id: selectedClient?.id,
+        emp_cod_integra: formData.emp_cod_integra?.toUpperCase(),
+        emp_cnpj_raiz: formData.emp_cnpj_raiz?.toUpperCase(),
+        emp_cnpj: formData.emp_cnpj?.toUpperCase(),
+        emp_nome: formData.emp_nome?.toUpperCase(),
+        emp_nome_reduz: formData.emp_nome_reduz?.toUpperCase(),
+        emp_nome_cmpl: formData.emp_nome_cmpl?.toUpperCase(),
     };
     
     let requestError;
@@ -370,8 +373,8 @@ const EmpresaPage: React.FC = () => {
         <h2 className="text-lg font-bold text-white">Empresas ({selectedClient?.cli_nome})</h2>
         <div className="flex flex-wrap items-center gap-2">
             {/* Removed Client Filter Select */}
-            <input type="text" placeholder="Buscar por nome..." value={filtroNome} onChange={(e) => setFiltroNome(e.target.value.toUpperCase())} className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
-            <input type="text" placeholder="Buscar por código..." value={filtroCodigo} onChange={(e) => setFiltroCodigo(e.target.value.toUpperCase())} className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+            <input type="text" placeholder="Buscar por nome..." value={filtroNome} onChange={(e) => setFiltroNome(e.target.value)} className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase"/>
+            <input type="text" placeholder="Buscar por código..." value={filtroCodigo} onChange={(e) => setFiltroCodigo(e.target.value)} className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase"/>
             <button
               onClick={() => openModal()}
               className="w-full md:w-auto px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 whitespace-nowrap"
@@ -405,25 +408,25 @@ const EmpresaPage: React.FC = () => {
                 </div>
                 <div>
                     <label htmlFor="emp_cnpj_raiz" className="block text-sm font-medium text-gray-300">CNPJ Raiz</label>
-                    <input type="text" name="emp_cnpj_raiz" id="emp_cnpj_raiz" value={formData.emp_cnpj_raiz} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                    <input type="text" name="emp_cnpj_raiz" id="emp_cnpj_raiz" value={formData.emp_cnpj_raiz} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
                 </div>
             </div>
 
             {/* Linha 2: Nome da Empresa */}
             <div>
                 <label htmlFor="emp_nome" className="block text-sm font-medium text-gray-300">Nome da Empresa</label>
-                <input type="text" name="emp_nome" id="emp_nome" value={formData.emp_nome} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                <input type="text" name="emp_nome" id="emp_nome" value={formData.emp_nome} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
             </div>
 
             {/* Linha 3: Nome Reduzido e Nome Complementar */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div>
                     <label htmlFor="emp_nome_reduz" className="block text-sm font-medium text-gray-300">Nome Reduzido</label>
-                    <input type="text" name="emp_nome_reduz" id="emp_nome_reduz" value={formData.emp_nome_reduz} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                    <input type="text" name="emp_nome_reduz" id="emp_nome_reduz" value={formData.emp_nome_reduz} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
                 </div>
                  <div>
                     <label htmlFor="emp_nome_cmpl" className="block text-sm font-medium text-gray-300">Nome Complementar</label>
-                    <input type="text" name="emp_nome_cmpl" id="emp_nome_cmpl" value={formData.emp_nome_cmpl} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                    <input type="text" name="emp_nome_cmpl" id="emp_nome_cmpl" value={formData.emp_nome_cmpl} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
                 </div>
             </div>
 
@@ -431,11 +434,11 @@ const EmpresaPage: React.FC = () => {
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                     <label htmlFor="emp_cnpj" className="block text-sm font-medium text-gray-300">CNPJ</label>
-                    <input type="text" name="emp_cnpj" id="emp_cnpj" value={formData.emp_cnpj} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                    <input type="text" name="emp_cnpj" id="emp_cnpj" value={formData.emp_cnpj} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
                 </div>
                 <div>
                     <label htmlFor="emp_cod_integra" className="block text-sm font-medium text-gray-300">Cód. Integração</label>
-                    <input type="text" name="emp_cod_integra" id="emp_cod_integra" value={formData.emp_cod_integra} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                    <input type="text" name="emp_cod_integra" id="emp_cod_integra" value={formData.emp_cod_integra} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
                 </div>
                 <div className="flex items-end pb-2">
                     <label className="flex items-center space-x-2 text-sm font-medium text-gray-300 cursor-pointer">

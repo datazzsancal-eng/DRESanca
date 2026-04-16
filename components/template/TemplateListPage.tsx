@@ -156,7 +156,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
 
         try {
             if (templateForAction.dre_cont) {
-                const response = await fetch(`https://webhook.moondog-ia.tech/webhook/temp_dre?cntr=${templateForAction.dre_cont}`);
+                const response = await fetch(`https://webhook.synapiens.com.br/webhook/temp_dre?cntr=${templateForAction.dre_cont}`);
                 
                 if (response.ok) {
                     const text = await response.text();
@@ -299,7 +299,7 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
       if (linesErrorFixed) throw linesErrorFixed;
 
       const { id, created_at, ...newHeaderData } = sourceHeader;
-      newHeaderData.dre_nome = newTemplateName;
+      newHeaderData.dre_nome = newTemplateName.toUpperCase();
       newHeaderData.dre_cont = null;
 
       const { data: insertedHeader, error: insertHeaderError } = await supabase
@@ -425,8 +425,8 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
             type="text" 
             placeholder="Buscar por nome..." 
             value={filtroNome}
-            onChange={(e) => setFiltroNome(e.target.value.toUpperCase())}
-            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            onChange={(e) => setFiltroNome(e.target.value)}
+            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase"
           />
           <button onClick={onAddNew} className="w-full md:w-auto px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
             Adicionar Template
@@ -455,8 +455,8 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
                     type="text"
                     id="newTemplateName"
                     value={newTemplateName}
-                    onChange={(e) => setNewTemplateName(e.target.value.toUpperCase())}
-                    className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500"
+                    onChange={(e) => setNewTemplateName(e.target.value)}
+                    className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 uppercase"
                     required
                 />
             </div>

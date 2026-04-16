@@ -256,9 +256,9 @@ const PlanoContabilPage: React.FC = () => {
       cliente_id: selectedClient.id,
       cnpj_raiz: selectedCnpjRaiz,
       reduz_emp: empresa?.reduz_emp || null,
-      conta_estru: formData.conta_estru.toUpperCase() || null,
+      conta_estru: formData.conta_estru?.toUpperCase() || null,
       conta_grau: formData.conta_grau ? parseInt(formData.conta_grau, 10) : null,
-      conta_descri: formData.conta_descri.toUpperCase() || null,
+      conta_descri: formData.conta_descri?.toUpperCase() || null,
     };
 
     let result;
@@ -384,7 +384,7 @@ const PlanoContabilPage: React.FC = () => {
             placeholder="Buscar por conta/descrição..."
             value={filtroConta}
             onChange={(e) => setFiltroConta(e.target.value)}
-            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase"
           />
            <button
             onClick={() => setIsComparing(true)}
@@ -428,11 +428,11 @@ const PlanoContabilPage: React.FC = () => {
           </div>
           <div>
             <label htmlFor="conta_estru" className="block text-sm font-medium text-gray-300">Conta Estrutural</label>
-            <input type="text" name="conta_estru" id="conta_estru" value={formData.conta_estru} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+            <input type="text" name="conta_estru" id="conta_estru" value={formData.conta_estru} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
           </div>
           <div>
             <label htmlFor="conta_descri" className="block text-sm font-medium text-gray-300">Descrição da Conta</label>
-            <input type="text" name="conta_descri" id="conta_descri" value={formData.conta_descri} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+            <input type="text" name="conta_descri" id="conta_descri" value={formData.conta_descri} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
           </div>
           <div>
             <label htmlFor="conta_grau" className="block text-sm font-medium text-gray-300">Grau</label>

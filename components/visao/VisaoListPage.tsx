@@ -302,8 +302,8 @@ const VisaoListPage: React.FC<VisaoListPageProps> = ({ onEditVisao, onAddNew }) 
             type="text" 
             placeholder="Buscar por nome..." 
             value={filtroNome}
-            onChange={e => setFiltroNome(e.target.value.toUpperCase())}
-            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm"
+            onChange={e => setFiltroNome(e.target.value)}
+            className="w-full md:w-auto px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm uppercase"
           />
           <button onClick={onAddNew} className="w-full md:w-auto px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
             Adicionar Visão

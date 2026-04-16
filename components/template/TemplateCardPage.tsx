@@ -137,7 +137,7 @@ const TemplateCardPage: React.FC<TemplateCardPageProps> = ({ templateId, onBack 
                 vlr_linha_02: c.vlr_linha_02,
                 crd_posicao: c.crd_posicao,
                 tit_card_dre: c.tit_card_dre || '',
-                tit_card_ajust: c.tit_card_ajust || ''
+                tit_card_ajust: c.tit_card_ajust?.toUpperCase() || ''
             }));
 
         // 2. Primeiro removemos os existentes
@@ -166,6 +166,7 @@ const TemplateCardPage: React.FC<TemplateCardPageProps> = ({ templateId, onBack 
         setSaving(false);
     }
   };
+
 
 
   if (loading) return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-t-transparent border-indigo-400 rounded-full animate-spin"></div><span className="ml-4 text-gray-300">Carregando...</span></div>;
@@ -203,9 +204,9 @@ const TemplateCardPage: React.FC<TemplateCardPageProps> = ({ templateId, onBack 
                 <input 
                   type="text"
                   value={cardData.tit_card_ajust || ''}
-                  onChange={(e) => handleCardChange(pos, 'tit_card_ajust', e.target.value.toUpperCase())}
+                  onChange={(e) => handleCardChange(pos, 'tit_card_ajust', e.target.value)}
                   disabled={!cardData.dre_template_linha_id}
-                  className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md disabled:bg-gray-600 disabled:cursor-not-allowed"
+                  className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md disabled:bg-gray-600 disabled:cursor-not-allowed uppercase"
                 />
                 <p className="mt-1 text-xs text-gray-500 truncate" title={cardData.tit_card_dre || ''}>
                   Original: {cardData.tit_card_dre || '-'}

@@ -140,9 +140,6 @@ const ClientePage: React.FC = () => {
         setFormData(prev => ({ ...prev, [name]: checked ? 'S' : 'N' }));
     } else {
         let finalValue = value;
-        if (type === 'text') {
-            finalValue = value.toUpperCase();
-        }
         setFormData(prev => ({ ...prev, [name]: finalValue }));
     }
   };
@@ -152,8 +149,8 @@ const ClientePage: React.FC = () => {
     const { cliente_id, cli_nome, cli_situacao, cli_restrito_sn } = formData;
     
     const payload = {
-        cliente_id,
-        cli_nome: cli_nome || null,
+        cliente_id: cliente_id?.toUpperCase(),
+        cli_nome: cli_nome?.toUpperCase() || null,
         cli_situacao: cli_situacao ? parseInt(cli_situacao, 10) : null,
         cli_restrito_sn: cli_restrito_sn || 'N',
     };
@@ -281,8 +278,8 @@ const ClientePage: React.FC = () => {
                 type="text"
                 placeholder="Buscar por nome..."
                 value={filtroNome}
-                onChange={(e) => setFiltroNome(e.target.value.toUpperCase())}
-                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                onChange={(e) => setFiltroNome(e.target.value)}
+                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase"
             />
             <button
               onClick={() => openModal()}
@@ -301,11 +298,11 @@ const ClientePage: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
                 <label htmlFor="cliente_id" className="block text-sm font-medium text-gray-300">Código do Cliente</label>
-                <input type="text" name="cliente_id" id="cliente_id" value={formData.cliente_id} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                <input type="text" name="cliente_id" id="cliente_id" value={formData.cliente_id} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
             </div>
             <div>
                 <label htmlFor="cli_nome" className="block text-sm font-medium text-gray-300">Nome do Cliente</label>
-                <input type="text" name="cli_nome" id="cli_nome" value={formData.cli_nome} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                <input type="text" name="cli_nome" id="cli_nome" value={formData.cli_nome} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>

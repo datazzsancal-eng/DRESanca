@@ -87,7 +87,7 @@ const TipoVisaoPage: React.FC = () => {
     if (type === 'checkbox') {
       setFormData(prev => ({ ...prev, [name]: checked ? 'S' : 'N' }));
     } else {
-      setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
+      setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
 
@@ -95,8 +95,8 @@ const TipoVisaoPage: React.FC = () => {
     e.preventDefault();
     
     const payload = {
-      tpvis_nome: formData.tpvis_nome || null,
-      tpvis_descri: formData.tpvis_descri || null,
+      tpvis_nome: formData.tpvis_nome?.toUpperCase() || null,
+      tpvis_descri: formData.tpvis_descri?.toUpperCase() || null,
       tpvis_ativo_sn: formData.tpvis_ativo_sn,
     };
 
@@ -201,8 +201,8 @@ const TipoVisaoPage: React.FC = () => {
                 type="text"
                 placeholder="Buscar por nome..."
                 value={filtroNome}
-                onChange={(e) => setFiltroNome(e.target.value.toUpperCase())}
-                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                onChange={(e) => setFiltroNome(e.target.value)}
+                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase"
             />
             <button
               onClick={() => openModal()}
@@ -219,11 +219,11 @@ const TipoVisaoPage: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
                 <label htmlFor="tpvis_nome" className="block text-sm font-medium text-gray-300">Nome</label>
-                <input type="text" name="tpvis_nome" id="tpvis_nome" value={formData.tpvis_nome} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                <input type="text" name="tpvis_nome" id="tpvis_nome" value={formData.tpvis_nome} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
             </div>
             <div>
                 <label htmlFor="tpvis_descri" className="block text-sm font-medium text-gray-300">Descrição</label>
-                <input type="text" name="tpvis_descri" id="tpvis_descri" value={formData.tpvis_descri} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                <input type="text" name="tpvis_descri" id="tpvis_descri" value={formData.tpvis_descri} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
             </div>
             <div className="flex items-start">
                 <div className="flex items-center h-5">

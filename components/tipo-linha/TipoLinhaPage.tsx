@@ -86,7 +86,7 @@ const TipoLinhaPage: React.FC = () => {
     if (type === 'checkbox') {
       setFormData(prev => ({ ...prev, [name]: checked ? 'S' : 'N' }));
     } else {
-      setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
+      setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
 
@@ -94,7 +94,7 @@ const TipoLinhaPage: React.FC = () => {
     e.preventDefault();
     
     const payload = {
-      tipo_linha: formData.tipo_linha || null,
+      tipo_linha: formData.tipo_linha?.toUpperCase() || null,
       tipo_ativo_sn: formData.tipo_ativo_sn,
     };
 
@@ -197,8 +197,8 @@ const TipoLinhaPage: React.FC = () => {
                 type="text"
                 placeholder="Buscar por tipo de linha..."
                 value={filtroTipoLinha}
-                onChange={(e) => setFiltroTipoLinha(e.target.value.toUpperCase())}
-                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                onChange={(e) => setFiltroTipoLinha(e.target.value)}
+                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase"
             />
             <button
               onClick={() => openModal()}
@@ -215,7 +215,7 @@ const TipoLinhaPage: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
                 <label htmlFor="tipo_linha" className="block text-sm font-medium text-gray-300">Tipo de Linha</label>
-                <input type="text" name="tipo_linha" id="tipo_linha" value={formData.tipo_linha} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                <input type="text" name="tipo_linha" id="tipo_linha" value={formData.tipo_linha} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
             </div>
             <div className="flex items-start">
                 <div className="flex items-center h-5">

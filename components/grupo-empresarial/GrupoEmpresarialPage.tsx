@@ -99,11 +99,7 @@ const GrupoEmpresarialPage: React.FC = () => {
   // CRUD operations
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    let finalValue = value;
-    if ('type' in e.target && e.target.type === 'text') {
-        finalValue = value.toUpperCase();
-    }
-    setFormData(prev => ({ ...prev, [name]: finalValue }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -111,8 +107,8 @@ const GrupoEmpresarialPage: React.FC = () => {
     const { grupo_nome, grupo_reduz, cliente_id } = formData;
     
     const payload = {
-      grupo_nome: grupo_nome || null,
-      grupo_reduz: grupo_reduz || null,
+      grupo_nome: grupo_nome?.toUpperCase() || null,
+      grupo_reduz: grupo_reduz?.toUpperCase() || null,
       cliente_id: cliente_id || null,
     };
 
@@ -219,8 +215,8 @@ const GrupoEmpresarialPage: React.FC = () => {
                 type="text"
                 placeholder="Buscar por nome..."
                 value={filtroNome}
-                onChange={(e) => setFiltroNome(e.target.value.toUpperCase())}
-                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                onChange={(e) => setFiltroNome(e.target.value)}
+                className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase"
             />
             <button
             onClick={() => openModal()}
@@ -238,11 +234,11 @@ const GrupoEmpresarialPage: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
                 <label htmlFor="grupo_nome" className="block text-sm font-medium text-gray-300">Nome do Grupo</label>
-                <input type="text" name="grupo_nome" id="grupo_nome" value={formData.grupo_nome} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                <input type="text" name="grupo_nome" id="grupo_nome" value={formData.grupo_nome} onChange={handleFormChange} required className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
             </div>
             <div>
                 <label htmlFor="grupo_reduz" className="block text-sm font-medium text-gray-300">Nome Reduzido</label>
-                <input type="text" name="grupo_reduz" id="grupo_reduz" value={formData.grupo_reduz} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                <input type="text" name="grupo_reduz" id="grupo_reduz" value={formData.grupo_reduz} onChange={handleFormChange} className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
             </div>
             <div>
                 <label htmlFor="cliente_id" className="block text-sm font-medium text-gray-300">Cliente</label>

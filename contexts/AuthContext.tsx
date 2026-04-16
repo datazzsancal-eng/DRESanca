@@ -1,4 +1,5 @@
 // Versao Cursor
+// Mazzia
 import React, { createContext, useContext, useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
@@ -34,8 +35,17 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfileState] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Refs to track state without closure issues in listeners
+  const lastLoadedUserId = useRef<string | null>(null);
+  const profileRef = useRef<UserProfile | null>(null);
+
+  const setProfile = useCallback((p: UserProfile | null) => {
+    setProfileState(p);
+    profileRef.current = p;
+  }, []);
   
   // Client Selection State
   const [availableClients, setAvailableClients] = useState<ClientContext[]>([]);
@@ -143,6 +153,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const loadUserData = useCallback(async (sessionUser: User) => {
+    // Prevent redundant loads if this user is already being/has been loaded
+    if (lastLoadedUserId.current === sessionUser.id && profileRef.current) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      console.log(`[AuthContext] Loading data for user: ${sessionUser.id}`);
+      // Track that we're loading this user
+      lastLoadedUserId.current = sessionUser.id;
+      
+      // Fetch profile first to get the user function
+      const profileData = await fetchProfile(sessionUser.id);
+      await fetchUserClients(sessionUser.id, profileData?.function || null, false);
+    } catch (err) {
+      console.error("[AuthContext] Error fetching user data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchUserClients]);
+
   const selectClient = useCallback((client: ClientContext | null) => {
     setSelectedClientState(client);
     if (client) {
@@ -157,29 +189,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('dre_selected_client');
   }, []);
 
-  const lastLoadedUserId = useRef<string | null>(null);
-
   useEffect(() => {
     let mounted = true;
-
-    const loadUserData = async (sessionUser: User) => {
-      // Prevent redundant loads for the same user if profile is already present
-      if (lastLoadedUserId.current === sessionUser.id && profile) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        // Fetch profile first to get the user function
-        const profileData = await fetchProfile(sessionUser.id);
-        await fetchUserClients(sessionUser.id, profileData?.function || null, false);
-        lastLoadedUserId.current = sessionUser.id;
-      } catch (err) {
-        console.error("Error fetching user data:", err);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
 
     // 1. Get initial session
     supabase.auth.getSession().then(({ data: { session }, error }) => {
@@ -223,11 +234,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (event === 'SIGNED_IN' && session?.user) {
         // Only trigger loading/fetch if user changed or profile is missing
-        if (session.user.id !== lastLoadedUserId.current || !profile) {
+        // Use profileRef.current to avoid closure issues with stale 'profile' state
+        if (session.user.id !== lastLoadedUserId.current || !profileRef.current) {
+          console.log(`[AuthContext] SIGNED_IN event for ${session.user.id}. Triggering load.`);
           setLoading(true);
           loadUserData(session.user);
+        } else {
+          console.log(`[AuthContext] SIGNED_IN event for ${session.user.id}. Data already loaded, skipping.`);
         }
       } else if (event === 'SIGNED_OUT') {
+        console.log('[AuthContext] SIGNED_OUT event. Clearing state.');
         lastLoadedUserId.current = null;
         setProfile(null);
         setAvailableClients([]);
@@ -243,7 +259,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchUserClients]);
+  }, [fetchUserClients, loadUserData]);
 
   const refreshClients = useCallback(async () => {
     if (user) {

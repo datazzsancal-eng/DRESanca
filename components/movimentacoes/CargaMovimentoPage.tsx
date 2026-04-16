@@ -202,7 +202,9 @@ const CargaMovimentoPage: React.FC = () => {
       
       const calcPayload = {
         ...payload,
-        table: "dre_calc_contabil"
+        table: "dre_calc_contabil",
+        user_id: user?.email,
+        empresa_id: empresa.id
       };
 
       let calcWebhookRes;
@@ -487,7 +489,10 @@ const CargaMovimentoPage: React.FC = () => {
                         id={`file-${state.empresa.id}`}
                         className="hidden"
                         accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-                        onChange={(e) => handleFileChange(state.empresa.id, e.target.files?.[0] || null)}
+                        onChange={(e) => {
+                          handleFileChange(state.empresa.id, e.target.files?.[0] || null);
+                          e.target.value = ''; // Reset value to allow re-selecting the same file
+                        }}
                         disabled={isBatchProcessing || state.status === 'success'}
                       />
                       <label

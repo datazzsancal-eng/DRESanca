@@ -109,3 +109,27 @@ Refatorar a tela de Carga de Movimento para suportar processamento serializado l
 - **Carga de Plano Contábil:**
     - Atualizado o endpoint de fallback para `https://webhook.synapiens.com.br/webhook/csv-upsert`.
     - Adicionados `cliente_id`, `emp_nome_reduzido` e `cnpj_raiz` ao payload.
+
+## Sessão: Otimização de Sessão e Fluxo de Carga DRE (Abril 2024)
+
+### Objetivo
+Resolver o problema de refresh inesperado ao alternar abas do navegador e implementar o fluxo sequencial de carga e cálculo para movimentações contábeis.
+
+### Mudanças Implementadas
+
+#### 1. Estabilização do AuthContext
+- **Prevenção de Refresh:** Implementada lógica para evitar que a aplicação recarregue dados redundantes ao recuperar o foco da aba.
+- **Uso de Refs para Estado:** Introduzidos `lastLoadedUserId` e `profileRef` para garantir que o listener de autenticação do Supabase tenha acesso a dados síncronos, evitando disparos falsos de carregamento devido a "closures" obsoletas.
+- **Logs de Diagnóstico:** Adicionados logs prefixados com `[AuthContext]` para monitorar o ciclo de vida da sessão e carregamento de dados.
+
+#### 2. Fluxo de Carga de Movimento (CargaMovimentoPage.tsx)
+- **Processamento Sequencial:** Refatorada a lógica de processamento para executar dois webhooks em sequência:
+    1. `movto_upsert` (Carga de dados brutos).
+    2. `calc_dre` (Processamento de cálculos contábeis).
+- **Status Granular:** A interface agora separa visualmente as etapas de "Carga" e "Cálculo", com ícones, textos e barras de progresso independentes.
+- **Tratamento de Erros:** Implementada captura de erros específica para cada etapa, permitindo identificar se a falha ocorreu na carga ou no cálculo.
+- **Endpoints de Produção:** Atualizado o webhook de cálculo para `https://webhook.synapiens.com.br/webhook/calc_dre`.
+
+### Decisões Técnicas
+- **Serialização de Processos:** Optou-se por não disparar o cálculo se a carga falhar, garantindo a integridade dos dados processados.
+- **Controle de UI:** Uso de estados de status independentes (`cargaStatus`, `calcStatus`) para fornecer feedback preciso sobre o estágio atual de cada empresa no lote de processamento.

@@ -92,9 +92,10 @@ A aplicação se integra com um backend de processamento (n8n) via webhooks.
 - **Query Params:** `cntr` (Código de controle do template).
 - **Uso:** Utilizado na tela de edição de templates para visualizar como a estrutura será processada antes de aplicá-la oficialmente.
 
-### 3.4 Carga de Movimento Serializada
-- **Endpoint:** `POST https://webhook.synapiens.com.br/webhook/movto_upsert`
-- **Payload:**
+### 3.4 Carga de Movimento Serializada (Fluxo Carga + Cálculo)
+- **Endpoint 1 (Carga):** `POST https://webhook.synapiens.com.br/webhook/movto_upsert`
+- **Endpoint 2 (Cálculo):** `POST https://webhook.synapiens.com.br/webhook/calc_dre`
+- **Payload (Carga):**
     ```json
     {
       "file_path": "caminho/do/arquivo/no/storage.csv",
@@ -108,7 +109,26 @@ A aplicação se integra com um backend de processamento (n8n) via webhooks.
       "crg_emp_periodo_mes": 4
     }
     ```
-- **Fluxo:** O frontend lista as empresas do cliente selecionado que o usuário possui permissão. O usuário associa os arquivos de carga a cada empresa por período. Ao processar, o frontend faz o upload para o bucket `movto_upload` e dispara o webhook para cada empresa de forma serializada (linha a linha). O status é atualizado em tempo real na interface (Upload efetuado -> Início da carga -> Sucesso/Erro).
+- **Payload (Cálculo):**
+    ```json
+    {
+      "file_path": "caminho/do/arquivo/no/storage.csv",
+      "bucket": "movto_upload",
+      "table": "dre_calc_contabil",
+      "on_conflict": "id",
+      "cliente_id": "ID_DO_CLIENTE",
+      "emp_cod_integra": "CODIGO_INTEGRACAO",
+      "cnpj_emp": "CNPJ_COMPLETO",
+      "crg_emp_periodo_ano": 2026,
+      "crg_emp_periodo_mes": 4,
+      "user_id": "email@usuario.com",
+      "empresa_id": "ID_DA_EMPRESA"
+    }
+    ```
+- **Fluxo Serializado:** O frontend executa o processamento em duas etapas sequenciais para cada empresa:
+    1.  **Etapa de Carga:** Upload do arquivo para o bucket `movto_upload` e disparo do webhook `movto_upsert`.
+    2.  **Etapa de Cálculo:** Após o sucesso da carga, dispara o webhook `calc_dre` para processar os resultados contábeis.
+- **Feedback Visual:** A interface exibe o progresso individual de cada etapa (Carga e Cálculo) com ícones de status, barras de progresso e mensagens de erro específicas. O status geral da empresa é indicado por um check verde (sucesso total) ou alerta vermelho (falha em qualquer etapa).
 
 ---
 
@@ -129,7 +149,13 @@ O fluxo de trabalho típico de um usuário no DRE View segue esta sequência:
 
 ---
 
-## 9. Hierarquia e Tipificação de Usuários
+## 10. Otimização de Performance e Estabilidade
+
+### 10.1 Persistência de Sessão e Prevenção de Refresh
+Para evitar que a aplicação recarregue ou resete o estado ao alternar entre abas do navegador ou aplicativos externos (como Excel), o `AuthContext` implementa uma lógica de proteção:
+- **`lastLoadedUserId` (Ref):** Rastreia o ID do último usuário cujos dados foram carregados com sucesso.
+- **`profileRef` (Ref):** Mantém uma referência síncrona ao perfil do usuário para evitar problemas de "closure" em listeners de eventos assíncronos.
+- **Otimização de Listener:** O listener `onAuthStateChange` do Supabase ignora eventos de revalidação de token ou sessões já carregadas, disparando a recarga de dados apenas quando há uma mudança real de identidade ou ausência de perfil. Isso garante que a aplicação permaneça estável e responsiva durante o uso multitarefa.
 
 Atualmente, a aplicação adota um modelo de **Hierarquia Funcional** baseada em permissões de dados, em vez de papéis (roles) fixos de sistema.
 

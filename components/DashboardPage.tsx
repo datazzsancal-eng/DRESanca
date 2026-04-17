@@ -300,24 +300,11 @@ const DashboardPage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Dropdowns (Períodos e Visões) – regras otimizadas
+  // 1. Fetch de Visões (quando o cliente muda)
   useEffect(() => {
-    const fetchDropdowns = async () => {
-      if (!user?.id || !selectedClient?.id) return;
+    const fetchVisoes = async () => {
+      if (!user?.id || !selectedClient?.id || activePage !== 'dashboard') return;
       try {
-        // Se já inicializado e só o activePage mudou, não recarrega tudo
-        if (dropdownsInitialized && periods.length && visoes.length) return;
-
-        const { data: pData } = await supabase
-          .from('viw_periodo_calc')
-          .select('retorno, display')
-          .order('retorno', { ascending: false });
-
-        if (pData?.length) {
-          setPeriods(pData);
-          setSelectedPeriod((prev: number | '') => (prev === '' ? Number(pData[0].retorno) : prev));
-        }
-
         let hasFull = false;
         let allowedIds = new Set<string>();
 
@@ -350,7 +337,6 @@ const DashboardPage: React.FC = () => {
         );
 
         if (filtered.length) {
-          // Garante shape compatível com Visao (preenchendo vis_descri quando não vier da query)
           const normalized: Visao[] = filtered.map((v: any) => ({
             id: String(v.id),
             vis_nome: String(v.vis_nome),
@@ -363,13 +349,67 @@ const DashboardPage: React.FC = () => {
           setVisoes([]);
           setSelectedVisao('');
         }
-        setDropdownsInitialized(true);
       } catch (e) {
-        setDropdownsInitialized(true);
+        console.error("Erro ao carregar visões:", e);
       }
     };
-    if (activePage === 'dashboard') fetchDropdowns();
-  }, [activePage, user?.id, selectedClient?.id, dropdownsInitialized, periods.length, visoes.length]);
+    fetchVisoes();
+  }, [activePage, user?.id, selectedClient?.id, profile?.function]);
+
+  // 2. Fetch de Períodos (quando a Visão muda - Lógica Dinâmica)
+  useEffect(() => {
+    const fetchPeriods = async () => {
+      if (!selectedVisao || activePage !== 'dashboard') return;
+      try {
+        // Step 1: Obter os IDs de integração das empresas da Visão selecionada
+        const { data: relData } = await supabase
+          .from('rel_visao_empresa')
+          .select('empresa_integra_id')
+          .eq('visao_id', selectedVisao);
+
+        if (!relData || relData.length === 0) {
+          setPeriods([]);
+          setSelectedPeriod('');
+          return;
+        }
+
+        const allowedIntegraIds = relData.map(r => r.empresa_integra_id).filter(Boolean);
+
+        // Step 2: Buscar períodos na view filtrando por essas empresas
+        const { data: pData } = await supabase
+          .from('viw_periodo_calc')
+          .select('retorno, display')
+          .in('emp_cod_integra', allowedIntegraIds)
+          .order('retorno', { ascending: false });
+
+        if (pData) {
+          // Deduplicar no JS para obter DISTINC retorno, display
+          const uniqueMap = new Map();
+          pData.forEach(item => {
+            if (!uniqueMap.has(item.retorno)) {
+              uniqueMap.set(item.retorno, item);
+            }
+          });
+          const uniquePeriods = Array.from(uniqueMap.values());
+          
+          setPeriods(uniquePeriods);
+
+          if (uniquePeriods.length > 0) {
+            // Se o período atual não existir na nova lista, seleciona o primeiro (mais recente)
+            const isValid = uniquePeriods.some(p => Number(p.retorno) === Number(selectedPeriod));
+            if (!isValid) {
+              setSelectedPeriod(Number(uniquePeriods[0].retorno));
+            }
+          } else {
+            setSelectedPeriod('');
+          }
+        }
+      } catch (e) {
+        console.error("Erro ao carregar períodos dinâmicos:", e);
+      }
+    };
+    fetchPeriods();
+  }, [selectedVisao, activePage]);
 
   // Configs & Webhook DRE - Parallelized with Timeout and Unified Loading
   useEffect(() => {
@@ -676,8 +716,8 @@ const DashboardPage: React.FC = () => {
                   <div className="px-4 py-2 mb-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md flex flex-col md:flex-row justify-between items-center gap-4">
                     <h2 className="text-lg font-bold text-white uppercase">DRE Visão Consolidada</h2>
                     <div className="flex gap-2">
-                        <select value={selectedPeriod} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedPeriod(Number(e.target.value))} className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md">{periods.map((p: Periodo) => <option key={p.retorno} value={p.retorno}>{p.display}</option>)}</select>
                         <select value={selectedVisao} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedVisao(e.target.value)} className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md">{visoes.map((v: Visao) => <option key={v.id} value={v.id}>{v.vis_nome}</option>)}</select>
+                        <select value={selectedPeriod} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedPeriod(Number(e.target.value))} className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md">{periods.map((p: Periodo) => <option key={p.retorno} value={p.retorno}>{p.display}</option>)}</select>
                         <button onClick={() => {
                             const ws = XLSX.utils.json_to_sheet(dreData.map(({ isBold, isItalic, indentationLevel, ...rest }) => rest));
                             const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "DRE");

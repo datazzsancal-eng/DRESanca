@@ -168,7 +168,43 @@ O fluxo de trabalho típico de um usuário no DRE View segue esta sequência:
 
 ---
 
-## 10. Otimização de Performance e Estabilidade
+## 11. Configuração do Supabase Storage
+
+Para que os uploads funcionem corretamente para todos os usuários (atuais e futuros), é necessário configurar as políticas de **Row Level Security (RLS)** nos buckets de armazenamento.
+
+### 11.1 Buckets Necessários
+1.  **`conta_upload`**: Utilizado para carga de planos contábeis.
+2.  **`movto_upload`**: Utilizado para carga de movimentações mensais.
+
+### 11.2 Políticas de Acesso Recomendadas (SQL)
+Execute os comandos abaixo no **SQL Editor** do seu console Supabase para garantir que qualquer usuário autenticado possa realizar uploads e ler os arquivos necessários para o processamento:
+
+```sql
+-- 1. Habilitar RLS (se ainda não estiver habilitado)
+-- Nota: Por padrão, buckets recém-criados podem ter RLS desativado. 
+-- É altamente recomendável ativar e usar as políticas abaixo.
+
+-- 2. Políticas para o bucket 'conta_upload'
+CREATE POLICY "Permitir upload para usuários autenticados" ON storage.objects
+FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'conta_upload');
+
+CREATE POLICY "Permitir leitura para usuários autenticados" ON storage.objects
+FOR SELECT TO authenticated
+USING (bucket_id = 'conta_upload');
+
+-- 3. Políticas para o bucket 'movto_upload'
+CREATE POLICY "Permitir upload para usuários autenticados" ON storage.objects
+FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'movto_upload');
+
+CREATE POLICY "Permitir leitura para usuários autenticados" ON storage.objects
+FOR SELECT TO authenticated
+USING (bucket_id = 'movto_upload');
+```
+
+> **Nota de Segurança:** As políticas acima são amplas para facilitar a operação inicial. Para uma segurança mais rigorosa, as políticas de `INSERT` e `SELECT` podem ser restringidas para que o usuário interaja apenas com pastas (`folder_name`) que correspondam aos IDs dos clientes aos quais ele tem acesso, cruzando dados com a tabela `rel_prof_cli_empr`.
+
 
 ### 10.1 Persistência de Sessão e Prevenção de Refresh
 Para evitar que a aplicação recarregue ou resete o estado ao alternar entre abas do navegador ou aplicativos externos (como Excel), a aplicação implementa uma lógica de proteção em múltiplos níveis:
@@ -182,10 +218,10 @@ Atualmente, a aplicação adota um modelo de **Hierarquia Funcional** baseada em
 Os usuários são tipificados através do campo `function` na tabela `profiles`, seguindo uma hierarquia definida:
 
 1.  **MASTER:** Acesso irrestrito e controle total da plataforma. Pode atribuir qualquer função a outros usuários.
-2.  **GESTOR CLIENTE:** Gerencia todos os aspectos de um ou mais clientes específicos. Pode atribuir funções até o nível de GESTOR CLIENTE. Tem acesso automático a todas as empresas dos clientes que gerencia.
-3.  **ADMIN:** Administrador com permissões de configuração e gestão de usuários. Ao criar um cliente, este é automaticamente associado ao seu acesso, garantindo controle total sobre as empresas desse cliente.
-4.  **GESTOR CONTA:** Responsável pela gestão financeira e estrutural das contas. Não tem acesso ao CRUD de Cliente, Configurações ou Administração de Usuários.
-5.  **COLABORADOR:** Usuário operacional. Não tem acesso ao CRUD de Cliente, Empresa, Análise & Modelos, Configurações ou Administração de Usuários. Pode realizar cargas de plano contábil e visualizar o plano.
+2. **GESTOR CLIENTE:** Gerencia todos os aspectos de um ou mais clientes específicos. Pode atribuir funções até o nível de GESTOR CLIENTE. Tem acesso automático a todas as empresas dos clientes que gerencia.
+3.  **ADMIN:** Administrador com permissões de configuração e gestão de usuários. Tem acesso automático a todas as empresas dos clientes associados ao seu perfil.
+4.  **GESTOR CONTA:** Responsável pela gestão financeira e estrutural das contas. Tem acesso automático a todas as empresas dos clientes associados ao seu perfil. Não tem acesso ao CRUD de Cliente, Configurações ou Administração de Usuários.
+5.  **COLABORADOR:** Usuário operacional. Tem acesso granular a empresas específicas. Não tem acesso ao CRUD de Cliente, Empresa, Análise & Modelos, Configurações ou Administração de Usuários. Pode realizar cargas de plano contábil e visualizar o plano.
 6.  **LEITOR:** Acesso exclusivo para consulta de dashboards e exportação de relatórios. O menu lateral é dinamicamente filtrado para exibir apenas o Dashboard.
 
 ### 9.2 Gestão de Senhas e Segurança

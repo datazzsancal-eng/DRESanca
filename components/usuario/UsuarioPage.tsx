@@ -367,8 +367,8 @@ const UsuarioPage: React.FC = () => {
           const selectedCompanies = userConfig.selectedCompanies[clienteId];
           const clientDetails = clientCache[clienteId];
 
-          if (userFunction === 'GESTOR CLIENTE' || userFunction === 'ADMIN') {
-              // GESTOR CLIENTE and ADMIN always get full access to selected clients
+          if (userFunction === 'GESTOR CLIENTE' || userFunction === 'ADMIN' || userFunction === 'GESTOR CONTA') {
+              // GESTOR CLIENTE, ADMIN and GESTOR CONTA always get full access to selected clients
               rowsToInsert.push({
                   profile_id: userId,
                   cliente_id: clienteId,
@@ -778,7 +778,7 @@ const UsuarioPage: React.FC = () => {
                     {/* 2. Seleção de Clientes (Shuttle Topo) */}
                     <div>
                         <h3 className="text-sm font-bold text-gray-300 mb-2 uppercase">1. Seleção de Clientes</h3>
-                        {(formData.function === 'GESTOR CLIENTE' || formData.function === 'ADMIN') && (
+                        {(formData.function === 'GESTOR CLIENTE' || formData.function === 'ADMIN' || formData.function === 'GESTOR CONTA') && (
                             <div className="p-3 mb-4 bg-blue-900/20 border border-blue-800 rounded-md">
                                 <p className="text-xs text-blue-300">
                                     Usuários com a função <strong>{formData.function}</strong> têm acesso automático a todas as empresas dos clientes selecionados.
@@ -796,7 +796,7 @@ const UsuarioPage: React.FC = () => {
                     </div>
 
                     {/* 3. Configuração Granular (Tabs) */}
-                    {formData.function !== 'GESTOR CLIENTE' && formData.function !== 'ADMIN' && selectedClientIds.size > 0 && (
+                    {formData.function !== 'GESTOR CLIENTE' && formData.function !== 'ADMIN' && formData.function !== 'GESTOR CONTA' && selectedClientIds.size > 0 && (
                         <div className="mt-4 bg-gray-900/30 p-4 rounded-lg border border-gray-700">
                             <h3 className="text-sm font-bold text-gray-300 mb-3 uppercase">2. Configuração de Acesso por Cliente</h3>
                             

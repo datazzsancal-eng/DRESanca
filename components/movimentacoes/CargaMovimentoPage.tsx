@@ -31,8 +31,13 @@ const CargaMovimentoPage: React.FC = () => {
   const { selectedClient, user, profile } = useAuth();
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [processStates, setProcessStates] = useState<EmpresaProcessState[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const now = new Date();
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const defaultMonthValue = lastMonthDate.getMonth() + 1;
+  const defaultYearValue = lastMonthDate.getFullYear();
+
+  const [selectedMonth, setSelectedMonth] = useState<number>(defaultMonthValue);
+  const [selectedYear, setSelectedYear] = useState<number>(defaultYearValue);
   const [loading, setLoading] = useState(false);
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);

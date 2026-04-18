@@ -6,9 +6,10 @@ import { TableSkeleton, CardSkeleton } from './shared/Skeleton';
 import DreTable, { DreDataRow } from './shared/DreTable';
 import StatCard from './shared/StatCard';
 import * as XLSX from 'xlsx';
-import { AlertCircle, LayoutGrid, Building2, FileText, Download, Loader2 } from 'lucide-react';
+import { AlertCircle, LayoutGrid, Building2, FileText, Download, Loader2, RefreshCw } from 'lucide-react';
 
 // Icons
+const RefreshIcon = () => <RefreshCw className="h-4 w-4 mr-1.5" />;
 const XlsxIcon = () => <Download className="h-4 w-4 mr-1.5 text-green-500" />;
 const CsvIcon = () => <FileText className="h-4 w-4 mr-1.5 text-blue-400" />;
 
@@ -58,8 +59,19 @@ const NovoDashboardPage: React.FC = () => {
     const [dreData, setDreData] = useState<DreDataRow[]>([]);
     const [cardConfigs, setCardConfigs] = useState<CardConfig[]>([]);
     const [lineStyles, setLineStyles] = useState<Map<number, LineStyle>>(new Map());
+    const [refreshKey, setRefreshKey] = useState(0);
     
     const dreCacheRef = useRef<Record<string, any[]>>({});
+
+    const handleRefresh = () => {
+        const visaoIdParam = mode === 'empresa' ? 'EMP' : selectedVisao;
+        const empIntegraParam = mode === 'empresa' ? selectedEmpresa : '0';
+        const cacheKey = `${visaoIdParam}-${empIntegraParam}-${selectedPeriod}`;
+        if (dreCacheRef.current[cacheKey]) {
+            delete dreCacheRef.current[cacheKey];
+        }
+        setRefreshKey(prev => prev + 1);
+    };
 
     // 1. Fetch Visões e Empresas when Client changes
     useEffect(() => {
@@ -233,7 +245,7 @@ const NovoDashboardPage: React.FC = () => {
                 const fetchDrePromise = async () => {
                     if (dreCacheRef.current[cacheKey]) return dreCacheRef.current[cacheKey];
 
-                    const webhookUrl = 'https://webhook.synapiens.com.br/webhook/dre_busca';
+                    const webhookUrl = 'https://webhook.synapiens.com.br/webhook/dre_busca_novo';
                     const res = await fetch(
                         `${webhookUrl}?carga=${selectedPeriod}&id=${visaoIdParam}&emp_id_integra=${empIntegraParam}`,
                         { signal: controller.signal }
@@ -270,7 +282,7 @@ const NovoDashboardPage: React.FC = () => {
 
         loadData();
         return () => controller.abort();
-    }, [mode, selectedVisao, selectedEmpresa, selectedPeriod, selectedClient?.id]);
+    }, [mode, selectedVisao, selectedEmpresa, selectedPeriod, selectedClient?.id, refreshKey]);
 
     // 4. Transform Raw Data for Table
     useEffect(() => {
@@ -384,6 +396,13 @@ const NovoDashboardPage: React.FC = () => {
 
                         {/* Export Buttons */}
                         <div className="flex gap-2">
+                            <button 
+                                onClick={handleRefresh} 
+                                disabled={loading || !selectedPeriod || (mode === 'visao' ? !selectedVisao : !selectedEmpresa)} 
+                                className="flex items-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-800 border border-gray-700 rounded-lg hover:bg-gray-700 hover:border-gray-600 transition-all disabled:opacity-50"
+                            >
+                                <RefreshIcon /> Atualizar
+                            </button>
                              <button onClick={() => {
                                 const ws = XLSX.utils.json_to_sheet(dreData.map(({ isBold, isItalic, indentationLevel, ...rest }) => rest));
                                 const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "DRE");

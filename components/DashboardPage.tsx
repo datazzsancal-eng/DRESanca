@@ -21,7 +21,7 @@ import DreTable, { DreDataRow } from './shared/DreTable';
 import StatCard from './shared/StatCard';
 import * as XLSX from 'xlsx';
 import appMetadata from '../app_metadata.json';
-import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, LayoutGrid, RefreshCw } from 'lucide-react';
 
 // Type definitions
 interface Periodo { retorno: number; display: string; }
@@ -66,6 +66,7 @@ const AdminIcon = () => <Icon path="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26
 const ChevronDownIcon = () => <Icon path="M19 9l-7 7-7-7" className="h-4 w-4" />;
 const ChevronUpIcon = () => <Icon path="M5 15l7-7 7 7" className="h-4 w-4" />;
 const LogoutIcon = () => <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />;
+const RefreshIcon = () => <RefreshCw className="h-4 w-4 mr-1.5" />;
 const XlsxIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" className="h-5 w-5 mr-1 text-green-500" />;
 const CsvIcon = () => <Icon path="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" className="h-5 w-5 mr-1 text-blue-400" />;
 const SwitchIcon = () => <Icon path="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" className="h-4 w-4" />;
@@ -81,7 +82,7 @@ const SancalLogo = () => (
 
 const navigationData: any[] = [
   { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR', 'LEITOR'] },
-  { id: 'novo-dash', label: 'Novo Dash', icon: () => <Icon path="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR', 'LEITOR'] },
+  { id: 'novo-dash', label: 'Novo Dash', icon: LayoutGrid, roles: ['MASTER'] },
   { id: 'movimentacoes', label: 'Movimentações', icon: () => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR'], children: [
     { id: 'carga-movimento', label: 'Carga do Movimento' },
     { id: 'recalculo', label: 'Recálculo' }
@@ -221,8 +222,17 @@ const DashboardPage: React.FC = () => {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const dreCacheRef = useRef<Record<string, any[]>>({});
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const handleRefresh = () => {
+    const cacheKey = `${selectedVisao}-${selectedPeriod}`;
+    if (dreCacheRef.current[cacheKey]) {
+      delete dreCacheRef.current[cacheKey];
+    }
+    setRefreshKey(prev => prev + 1);
+  };
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -495,7 +505,7 @@ const DashboardPage: React.FC = () => {
       controller.abort();
       clearTimeout(timeoutId);
     };
-  }, [activePage, selectedVisao, selectedPeriod]);
+  }, [activePage, selectedVisao, selectedPeriod, refreshKey]);
 
   // Processing Table Data
   useEffect(() => {
@@ -651,6 +661,7 @@ const DashboardPage: React.FC = () => {
                   <div className="px-4 py-2 mb-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md flex flex-col md:flex-row justify-between items-center gap-4">
                     <h2 className="text-lg font-bold text-white uppercase">DRE Visão Consolidada</h2>
                     <div className="flex gap-2">
+                        <button onClick={handleRefresh} disabled={loading || !selectedVisao || !selectedPeriod} className="flex items-center whitespace-nowrap px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600 disabled:opacity-50"><RefreshIcon /> Atualizar</button>
                         <select value={selectedVisao} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedVisao(e.target.value)} className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md">{visoes.map((v: Visao) => <option key={v.id} value={v.id}>{v.vis_nome}</option>)}</select>
                         <select value={selectedPeriod} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedPeriod(Number(e.target.value))} className="px-3 py-1.5 text-sm text-gray-200 bg-gray-700 border border-gray-600 rounded-md">{periods.map((p: Periodo) => <option key={p.retorno} value={p.retorno}>{p.display}</option>)}</select>
                         <button onClick={() => {
@@ -689,7 +700,7 @@ const DashboardPage: React.FC = () => {
               <div className="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700">{loading ? <TableSkeleton rows={10} cols={6} /> : dreData.length ? <DreTable data={dreData} selectedPeriod={selectedPeriod} /> : <div className="text-center p-8 min-h-[400px] flex flex-col justify-center"><h3 className="text-xl font-bold text-white mb-2">Sem Dados</h3><p className="text-gray-400">Não há registros para os filtros selecionados.</p></div>}</div>
             </div>
           )}
-          {activePage === 'novo-dash' && <NovoDashboardPage />}
+          {activePage === 'novo-dash' && profile?.function === 'MASTER' && <NovoDashboardPage />}
           {activePage === 'visao' && <VisaoPage />}
           {activePage === 'cliente' && <ClientePage />}
           {activePage === 'empresa' && <EmpresaPage />}

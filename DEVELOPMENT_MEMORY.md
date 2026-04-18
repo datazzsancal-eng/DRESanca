@@ -164,14 +164,14 @@ Implementar um novo dashboard para testes que permita a análise de dados tanto 
 - **Protótipo "Novo Dash":** Criada página independente para testes de novas lógicas de visualização.
 - **Alternância de Modo:** Implementado seletor de modo ("Visão Consolidada" vs "Unidade Individual").
 - **Seletor Dinâmico:** A interface alterna entre um dropdown de Visões e um Combobox de Empresas dependendo do modo selecionado.
-- **Integração API:** Lógica de busca atualizada para enviar `id='EMP'` e o código de integração da empresa quando em modo individual.
+- **Integração API:** Lógica de busca atualizada para enviar `id='EMP'` e o código de integração da empresa quando em modo individual. Utiliza o endpoint específico `dre_busca_novo` para o protótipo.
 
 #### 2. Arquitetura e Reuso (Refatoração)
 - **Componentes Compartilhados:** `StatCard.tsx` e `DreTable.tsx` movidos para `src/components/shared/`.
 - **Interoperabilidade:** O Dashboard original foi atualizado para utilizar estes componentes compartilhados, garantindo consistência visual e facilitando a manutenção futura.
 
 #### 3. Navegação
-- **Novo Item de Menu:** Adicionada a rota "Novo Dash" na Sidebar, visível para todas as funções de consulta.
+- **Navegação:** Adicionada a rota "Novo Dash" na Sidebar, visível exclusivamente para usuários com função `MASTER` (conforme solicitado para testes restritos).
 - **Ícones:** Utilizado o ícone `LayoutGrid` para o novo dashboard.
 
 ### Decisões Técnicas

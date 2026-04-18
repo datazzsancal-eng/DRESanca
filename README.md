@@ -45,6 +45,12 @@ Todas as telas de cadastro permitem Adicionar, Editar, Visualizar e Excluir regi
     - **Monitoramento em Tempo Real:** Feedback visual detalhado para cada etapa do processo, com indicadores de sucesso/erro e barras de progresso individuais.
     - **Filtros Avançados:** Busca rápida de empresas por código, nome ou CNPJ.
 
+- **Recalculo de Dados:**
+    - Módulo especializado para re-processamento de períodos contábeis.
+    - **Recálculo Corporativo (Filler):** Integração com views de períodos disponíveis e automação de seleção.
+    - **Recálculo por Empresa:** Permite a seleção múltipla de períodos e empresas para republicação de dados contábeis.
+    - **Feedback Visual:** Utiliza o mesmo sistema de barras de progresso animadas da tela de Carga para indicação de processamento.
+
 ### 5. Módulos de Configuração (Tabelas Auxiliares)
 Gerenciamento de tabelas de apoio que são utilizadas em outras partes do sistema.
 

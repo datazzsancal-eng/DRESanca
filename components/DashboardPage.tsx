@@ -7,6 +7,7 @@ import EmpresaPage from './empresa/EmpresaPage';
 import PlanoContabilPage from './plano-contabil/PlanoContabilPage';
 import CargaPlanoPage from './plano-contabil/CargaPlanoPage';
 import CargaMovimentoPage from './movimentacoes/CargaMovimentoPage';
+import RecalculoPage from './movimentacoes/RecalculoPage';
 import TemplatePage from './template/TemplatePage';
 import SituacaoPage from './situacao/SituacaoPage';
 import TipoLinhaPage from './tipo-linha/TipoLinhaPage';
@@ -82,7 +83,8 @@ const SancalLogo = () => (
 const navigationData: any[] = [
   { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR', 'LEITOR'] },
   { id: 'movimentacoes', label: 'Movimentações', icon: () => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR'], children: [
-    { id: 'carga-movimento', label: 'Carga do Movimento' }
+    { id: 'carga-movimento', label: 'Carga do Movimento' },
+    { id: 'recalculo', label: 'Recálculo' }
   ]},
   { id: 'analise-modelos', label: 'Análise & Modelos', icon: VisionIcon, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA'], children: [{ id: 'visao', label: 'Visões' }, { id: 'templates', label: 'Templates' }] },
   { id: 'estrutura', label: 'Estrutura', icon: StructureIcon, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR'], children: [
@@ -760,6 +762,7 @@ const DashboardPage: React.FC = () => {
           {activePage === 'plano-contabil' && <PlanoContabilPage />}
           {activePage === 'carga-plano' && <CargaPlanoPage />}
           {activePage === 'carga-movimento' && <CargaMovimentoPage />}
+          {activePage === 'recalculo' && <RecalculoPage />}
           {activePage === 'templates' && <TemplatePage />}
           {activePage === 'situacao' && <SituacaoPage />}
           {activePage === 'tipo-linha' && <TipoLinhaPage />}

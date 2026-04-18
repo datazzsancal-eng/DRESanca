@@ -130,12 +130,28 @@ A aplicação se integra com um backend de processamento (n8n) via webhooks.
     1.  **Etapa de Carga:** Upload do arquivo para o bucket `movto_upload` e disparo do webhook `movto_upsert`.
     2.  **Etapa de Cálculo:** Após o sucesso da carga, dispara o webhook `calc_dre` para processar os resultados contábeis.
 - **Feedback Visual:** A interface exibe o progresso individual de cada etapa (Carga e Cálculo) com ícones de status, barras de progresso e mensagens de erro específicas. O status geral da empresa é indicado por um check verde (sucesso total) ou alerta vermelho (falha em qualquer etapa).
+- **Ordenação das Empresas:** As empresas na tela de carga são ordenadas primariamente pelo **CNPJ Raiz** (`emp_cnpj_raiz`) e secundariamente pelo **ID de Integração** (`emp_cod_integra`), facilitando a gestão de grupos econômicos.
 
 ---
 
 ## 4. Lógica de Cálculos e Indicadores
 
-### 4.1 Cálculo do Delta (Variação Mensal)
+### 4.1 Recálculo de Dados
+
+O sistema oferece um módulo de recálculo para processar novamente dados contábeis de períodos específicos.
+
+#### 4.1.1 Recálculo Corporativo (Filler)
+Para clientes específicos (configurados via `FILLER_CLIENT_ID`), o sistema oferece uma interface simplificada para recálculo de períodos corporativos.
+- **Origem de Dados:** Utiliza a view `viw_filler_corp_periodo` para listar meses disponíveis.
+- **Automação:** Se a view retornar períodos, o botão "Novo Cálculo" manual é ocultado para evitar erros de entrada.
+- **Feedback:** Exibição de barras de progresso animadas durante o processamento do webhook.
+
+#### 4.1.2 Recálculo por Empresa
+Permite selecionar empresas e períodos (`YYYYMM`) específicos para re-processamento em lote.
+- **Seleção Múltipla:** O usuário pode marcar diversos períodos para diversas empresas e disparar o processamento sequencial.
+- **Status em Tempo Real:** Cada linha exibe uma barra de progresso durante o cálculo.
+
+### 4.2 Cálculo do Delta (Variação Mensal)
 Nos cards de resumo do Dashboard, a variação percentual (Delta) é calculada comparando o desempenho do mês atual com o mês imediatamente anterior dentro do período selecionado.
 
 **Fórmula:**

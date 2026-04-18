@@ -103,7 +103,8 @@ const CargaMovimentoPage: React.FC = () => {
           .from('dre_empresa')
           .select('id, emp_nome, emp_cnpj, emp_cnpj_raiz, emp_cod_integra, emp_nome_reduz, emp_nome_cmpl')
           .eq('cliente_id', selectedClient.id)
-          .order('emp_nome_reduz');
+          .order('emp_cnpj_raiz')
+          .order('emp_cod_integra');
 
         if (empError) throw empError;
 

@@ -152,3 +152,27 @@ Garantir a estabilidade total da interface ao alternar abas e documentar as fór
 
 ### Decisões Técnicas
 - **Imutabilidade Referencial:** Priorizou-se a estabilidade da UI em detrimento de buscas agressivas, garantindo que o usuário não perca dados de formulários (como arquivos selecionados) durante o uso multitarefa.
+
+## Sessão: Recálculo Corporativo e Melhorias de UX (Abril 2024)
+
+### Objetivo
+Aprimorar o módulo de recálculo, unificando o feedback visual com a tela de carga e automatizando a identificação de períodos corporativos.
+
+### Mudanças Implementadas
+
+#### 1. Recálculo Corporativo (RecalculoPage.tsx)
+- **Integração com View:** O sistema agora consome a view `viw_filler_corp_periodo` para buscar os períodos disponíveis para o Filler Corporativo.
+- **Visibilidade Inteligente:** O botão de entrada manual "Novo Cálculo" agora é ocultado automaticamente se a view retornar períodos válidos, simplificando a jornada do usuário.
+- **Mapeamento de Campos:** A view fornece `retorno` (ID do período), `display` (Rótulo formatado), `cliente_id` e `visao_id` para o payload da API.
+
+#### 2. Feedback Visual e Barras de Progresso
+- **Padronização de UI:** Implementadas barras de progresso animadas (`animate-progress-indefinite`) tanto no recálculo corporativo quanto no recálculo por empresa, espelhando o comportamento da tela de Carga de Movimento.
+- **Indicação de Estado:** Uso de animações de pulso e cores (Indigo/Yellow) para diferenciar processamento manual de automático.
+
+#### 3. Ordenação e Organização (CargaMovimentoPage.tsx)
+- **Nova Ordenação:** A lista de empresas agora segue a ordem `emp_cnpj_raiz` -> `emp_cod_integra`. Esta mudança agrupa empresas da mesma "família" (mesmo CNPJ raiz) e as organiza sequencialmente por seu código de integração, otimizando a rotina de carga em lote.
+
+### Decisões Técnicas
+- **Prioridade de Dados:** A view corporativa tornou-se a fonte primária de verdade para o Filler, reduzindo a necessidade de inputs manuais de anos/meses que poderiam não existir no banco.
+- **Consistência de CSS:** O estilo das barras de progresso foi unificado via `@keyframes` embutido nos componentes, garantindo que o feedback de "trabalho em segundo plano" seja idêntico em todas as áreas operacionais.
+

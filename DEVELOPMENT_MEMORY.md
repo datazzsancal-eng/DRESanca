@@ -153,6 +153,31 @@ Garantir a estabilidade total da interface ao alternar abas e documentar as fór
 ### Decisões Técnicas
 - **Imutabilidade Referencial:** Priorizou-se a estabilidade da UI em detrimento de buscas agressivas, garantindo que o usuário não perca dados de formulários (como arquivos selecionados) durante o uso multitarefa.
 
+## Sessão: Novo Dashboard e Análise por Unidade (Abril 2024)
+
+### Objetivo
+Implementar um novo dashboard para testes que permita a análise de dados tanto por visões consolidadas quanto por unidades individuais, sem impactar a funcionalidade existente.
+
+### Mudanças Implementadas
+
+#### 1. Novo Dashboard (NovoDashboardPage.tsx)
+- **Protótipo "Novo Dash":** Criada página independente para testes de novas lógicas de visualização.
+- **Alternância de Modo:** Implementado seletor de modo ("Visão Consolidada" vs "Unidade Individual").
+- **Seletor Dinâmico:** A interface alterna entre um dropdown de Visões e um Combobox de Empresas dependendo do modo selecionado.
+- **Integração API:** Lógica de busca atualizada para enviar `id='EMP'` e o código de integração da empresa quando em modo individual.
+
+#### 2. Arquitetura e Reuso (Refatoração)
+- **Componentes Compartilhados:** `StatCard.tsx` e `DreTable.tsx` movidos para `src/components/shared/`.
+- **Interoperabilidade:** O Dashboard original foi atualizado para utilizar estes componentes compartilhados, garantindo consistência visual e facilitando a manutenção futura.
+
+#### 3. Navegação
+- **Novo Item de Menu:** Adicionada a rota "Novo Dash" na Sidebar, visível para todas as funções de consulta.
+- **Ícones:** Utilizado o ícone `LayoutGrid` para o novo dashboard.
+
+### Decisões Técnicas
+- **Isolamento de Testes:** Optou-se por criar uma nova página em vez de modificar a atual para permitir validação segura das mudanças na API de busca por parte do backend.
+- **Segurança Restrita:** O seletor de empresas no novo dashboard filtra automaticamente a lista com base nas permissões de `rel_prof_cli_empr` do usuário logado.
+
 ## Sessão: Recálculo Corporativo e Melhorias de UX (Abril 2024)
 
 ### Objetivo

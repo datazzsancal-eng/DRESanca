@@ -58,7 +58,8 @@ A aplicação se integra com um backend de processamento (n8n) via webhooks.
 - **Endpoint:** `GET https://webhook.synapiens.com.br/webhook/dre_busca`
 - **Query Params:**
     - `carga`: Período de referência (ex: `202401`).
-    - `id`: ID da Visão (`dre_visao.id`).
+    - `id`: ID da Visão (`dre_visao.id`) ou `'EMP'` quando consultando uma empresa individual.
+    - `emp_id_integra`: ID de integração da empresa (utilizado quando `id=EMP`). Se for consulta de visão, deve ser `'0'`.
 - **Retorno Esperado:** Array de objetos representando as linhas processadas.
     ```json
     [

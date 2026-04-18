@@ -15,7 +15,10 @@ import EstiloLinhaPage from './estilo-linha/EstiloLinhaPage';
 import TipoVisaoPage from './tipo-visao/TipoVisaoPage';
 import VisaoPage from './visao/VisaoPage';
 import UsuarioPage from './usuario/UsuarioPage';
+import NovoDashboardPage from './NovoDashboardPage';
 import { TableSkeleton, CardSkeleton } from './shared/Skeleton';
+import DreTable, { DreDataRow } from './shared/DreTable';
+import StatCard from './shared/StatCard';
 import * as XLSX from 'xlsx';
 import appMetadata from '../app_metadata.json';
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
@@ -23,10 +26,6 @@ import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 // Type definitions
 interface Periodo { retorno: number; display: string; }
 interface Visao { id: string; vis_nome: string; vis_descri: string | null; cliente_id?: string | null; }
-interface DreDataRow {
-    seq: number; desc: string; jan: number; fev: number; mar: number; abr: number; mai: number; jun: number; jul: number; ago: number; set: number; out: number; nov: number; dez: number;
-    accumulated: number; percentage: number; isBold: boolean; isItalic: boolean; indentationLevel: number;
-}
 interface CardConfig { id: number; crd_posicao: number; tit_card_ajust: string | null; dre_linha_seq: number | null; vlr_linha_01: 'ACUM' | 'PERC'; vlr_linha_02: 'ACUM' | 'PERC'; }
 interface LineStyle { seq: number; tipografia: 'NORMAL' | 'NEGRITO' | 'ITALICO' | 'NEGR/ITAL' | null; indentacao: number; }
 
@@ -82,6 +81,7 @@ const SancalLogo = () => (
 
 const navigationData: any[] = [
   { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR', 'LEITOR'] },
+  { id: 'novo-dash', label: 'Novo Dash', icon: () => <Icon path="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR', 'LEITOR'] },
   { id: 'movimentacoes', label: 'Movimentações', icon: () => <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />, roles: ['MASTER', 'GESTOR CLIENTE', 'ADMIN', 'GESTOR CONTA', 'COLABORADOR'], children: [
     { id: 'carga-movimento', label: 'Carga do Movimento' },
     { id: 'recalculo', label: 'Recálculo' }
@@ -196,73 +196,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen, acti
       </aside>
     </>
   );
-};
-
-interface StatCardProps { title: string; subtitle: string; value: string; percentage: string; variation: number; }
-const StatCard: React.FC<StatCardProps> = ({ title, subtitle, value, percentage, variation }) => {
-  const isPositive = (Number(variation) || 0) >= 0;
-  return (
-    <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-md min-h-[120px] flex flex-col justify-between">
-      <p className="text-sm font-medium text-gray-400 truncate" title={title}>{title}</p>
-      <div className="mt-2">
-        <h3 className="text-2xl font-bold text-white truncate">{value}</h3>
-        <p className="text-sm text-gray-400 truncate">{percentage}</p>
-      </div>
-      <div className={`text-xs font-semibold text-right mt-2 ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
-        {isPositive ? '▲' : '▼'} {Math.abs(Number(variation) || 0).toFixed(2)}%
-        <span className="text-gray-500 ml-1 font-normal">{subtitle}</span>
-      </div>
-    </div>
-  );
-};
-
-interface DreTableProps { data: DreDataRow[]; selectedPeriod: number | ''; }
-const DreTable: React.FC<DreTableProps> = ({ data, selectedPeriod }) => {
-    const allMonths = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    const visibleMonths = allMonths.slice(0, selectedPeriod ? (Number(selectedPeriod) % 100) : 12);
-
-    return (
-        <div className="overflow-auto bg-gray-800 border border-gray-700 rounded-lg shadow-md max-h-[70vh]">
-            <table className="min-w-full text-sm divide-y divide-gray-700 border-separate border-spacing-0">
-                <thead className="bg-gray-700">
-                    <tr>
-                        <th className="sticky left-0 top-0 z-20 bg-gray-700 px-3 py-2 text-xs font-semibold text-left text-gray-400 uppercase shadow-[1px_0_0_0_rgba(75,85,99,1)]">Descrição</th>
-                        {visibleMonths.map((m: string) => (
-                          <th
-                            key={m}
-                            className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold text-right text-gray-400 uppercase"
-                          >
-                            {m}
-                          </th>
-                        ))}
-                        <th className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold text-right text-gray-400 uppercase">Acumulado</th>
-                        <th className="sticky top-0 z-10 bg-gray-700 px-3 py-2 text-xs font-semibold text-right text-gray-400 uppercase">%</th>
-                    </tr>
-                </thead>
-                <tbody className="bg-gray-800 divide-y divide-gray-700">
-                    {data.map((row: DreDataRow, idx: number) => (
-                        <tr key={idx} className="group hover:bg-gray-700/50">
-                            <td className="sticky left-0 z-10 bg-gray-800 group-hover:bg-gray-700 px-3 py-2 whitespace-nowrap text-gray-300 shadow-[1px_0_0_0_rgba(55,65,81,1)]" style={{ fontWeight: row.isBold ? 'bold' : 'normal', fontStyle: row.isItalic ? 'italic' : 'normal', paddingLeft: `calc(0.75rem + ${row.indentationLevel}ch)` }}>{row.desc}</td>
-                            {visibleMonths.map((m: string) => (
-                              <td
-                                key={m}
-                                className={`px-3 py-2 text-right whitespace-nowrap ${
-                                  (row[m.toLowerCase() as keyof DreDataRow] as number) < 0
-                                    ? 'text-red-500'
-                                    : 'text-gray-200'
-                                }`}
-                              >
-                                {safeFormatNumber(row[m.toLowerCase() as keyof DreDataRow])}
-                              </td>
-                            ))}
-                            <td className={`px-3 py-2 text-right whitespace-nowrap font-medium ${row.accumulated < 0 ? 'text-red-500' : 'text-white'}`}>{safeFormatNumber(row.accumulated)}</td>
-                            <td className="px-3 py-2 text-right whitespace-nowrap font-medium text-gray-400">{safeFormatPercentage(row.percentage)}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
 };
 
 const DashboardPage: React.FC = () => {
@@ -756,6 +689,7 @@ const DashboardPage: React.FC = () => {
               <div className="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700">{loading ? <TableSkeleton rows={10} cols={6} /> : dreData.length ? <DreTable data={dreData} selectedPeriod={selectedPeriod} /> : <div className="text-center p-8 min-h-[400px] flex flex-col justify-center"><h3 className="text-xl font-bold text-white mb-2">Sem Dados</h3><p className="text-gray-400">Não há registros para os filtros selecionados.</p></div>}</div>
             </div>
           )}
+          {activePage === 'novo-dash' && <NovoDashboardPage />}
           {activePage === 'visao' && <VisaoPage />}
           {activePage === 'cliente' && <ClientePage />}
           {activePage === 'empresa' && <EmpresaPage />}

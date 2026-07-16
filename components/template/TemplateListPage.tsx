@@ -39,7 +39,7 @@ interface TemplateListPageProps {
 }
 
 export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTemplate, onAddNew, onManageCards }) => {
-  const { user, selectedClient, profile } = useAuth();
+  const { user, selectedClient, profile, availableClients } = useAuth();
   
   // State management
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -58,6 +58,14 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
   const [isViewLoading, setIsViewLoading] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
   const [isFallbackView, setIsFallbackView] = useState(false);
+
+  // Cross-Copy Modal state
+  const [isCrossCopyModalOpen, setIsCrossCopyModalOpen] = useState(false);
+  const [crossCopySelectedClientId, setCrossCopySelectedClientId] = useState<string>('');
+  const [crossCopyTemplates, setCrossCopyTemplates] = useState<Template[]>([]);
+  const [crossCopySelectedTemplateId, setCrossCopySelectedTemplateId] = useState<string>('');
+  const [crossCopyNewTemplateName, setCrossCopyNewTemplateName] = useState('');
+  const [crossCopyLoading, setCrossCopyLoading] = useState(false);
 
   // Filter state
   const [filtroNome, setFiltroNome] = useState('');
@@ -328,6 +336,90 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
     }
   };
 
+  const closeCrossCopyModal = () => {
+    setIsCrossCopyModalOpen(false);
+    setCrossCopySelectedClientId('');
+    setCrossCopySelectedTemplateId('');
+    setCrossCopyNewTemplateName('');
+    setCrossCopyTemplates([]);
+  };
+
+  useEffect(() => {
+    const fetchCrossClientTemplates = async () => {
+      if (!crossCopySelectedClientId) {
+        setCrossCopyTemplates([]);
+        return;
+      }
+      setCrossCopyLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('dre_template')
+          .select('*')
+          .eq('cliente_id', crossCopySelectedClientId)
+          .order('dre_nome', { ascending: true });
+        
+        if (error) throw error;
+        setCrossCopyTemplates(data || []);
+      } catch (err: any) {
+        console.error("Error fetching templates for cross copy:", err);
+      } finally {
+        setCrossCopyLoading(false);
+      }
+    };
+
+    fetchCrossClientTemplates();
+  }, [crossCopySelectedClientId]);
+
+  const handleCrossCopy = async () => {
+    if (!crossCopySelectedTemplateId || !crossCopyNewTemplateName || !selectedClient?.id) return;
+    setCrossCopyLoading(true);
+    setError(null);
+
+    try {
+      const { data: sourceHeader, error: headerError } = await supabase
+        .from('dre_template')
+        .select('*')
+        .eq('id', crossCopySelectedTemplateId)
+        .single();
+      if (headerError) throw headerError;
+
+      const { data: sourceLinesFixed, error: linesErrorFixed } = await supabase
+        .from('dre_template_linhas')
+        .select('*')
+        .eq('dre_template_id', crossCopySelectedTemplateId);
+      if (linesErrorFixed) throw linesErrorFixed;
+
+      const { id, created_at, ...newHeaderData } = sourceHeader;
+      newHeaderData.dre_nome = crossCopyNewTemplateName.toUpperCase();
+      newHeaderData.dre_cont = null;
+      newHeaderData.cliente_id = selectedClient.id; // Assign to CURRENT client
+
+      const { data: insertedHeader, error: insertHeaderError } = await supabase
+        .from('dre_template')
+        .insert(newHeaderData)
+        .select()
+        .single();
+      if (insertHeaderError) throw insertHeaderError;
+      const newTemplateId = insertedHeader.id;
+
+      if (sourceLinesFixed && sourceLinesFixed.length > 0) {
+        const newLinesData = sourceLinesFixed.map(line => {
+          const { id, dre_template_id, ...newLine } = line;
+          return { ...newLine, dre_template_id: newTemplateId };
+        });
+        const { error: insertLinesError } = await supabase.from('dre_template_linhas').insert(newLinesData);
+        if (insertLinesError) throw insertLinesError;
+      }
+
+      closeCrossCopyModal();
+      fetchData();
+    } catch (err: any) {
+      setError(`Falha ao copiar o template: ${err.message}`);
+    } finally {
+      setCrossCopyLoading(false);
+    }
+  };
+
   const handleExportPdf = () => {
     if (!templateForAction?.dre_nome || filteredViewData.length === 0) return;
 
@@ -431,6 +523,9 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
           <button onClick={onAddNew} className="w-full md:w-auto px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
             Adicionar Template
           </button>
+          <button onClick={() => setIsCrossCopyModalOpen(true)} className="w-full md:w-auto px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 flex items-center justify-center gap-2">
+            <i className="fas fa-copy"></i> Copiar Template
+          </button>
         </div>
       </div>
 
@@ -466,6 +561,67 @@ export const TemplateListPage: React.FC<TemplateListPageProps> = ({ onEditTempla
             </div>
         </div>
       </Modal>
+
+      <Modal isOpen={isCrossCopyModalOpen} onClose={closeCrossCopyModal} title="Copiar Template de Outro Cliente">
+        <div className="space-y-4">
+            <p className="text-gray-300">Selecione um cliente e um de seus templates para copiar para o cliente atual ({selectedClient?.cli_nome}).</p>
+            
+            <div>
+                <label className="block text-sm font-medium text-gray-300">1. Selecione o Cliente Origem</label>
+                <select
+                    value={crossCopySelectedClientId}
+                    onChange={(e) => setCrossCopySelectedClientId(e.target.value)}
+                    className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500"
+                >
+                    <option value="">-- Selecione --</option>
+                    {availableClients.map(c => (
+                        <option key={c.id} value={c.id}>{c.cli_nome}</option>
+                    ))}
+                </select>
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-gray-300">2. Selecione o Template Origem</label>
+                <select
+                    value={crossCopySelectedTemplateId}
+                    onChange={(e) => setCrossCopySelectedTemplateId(e.target.value)}
+                    disabled={!crossCopySelectedClientId || crossCopyLoading}
+                    className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 disabled:opacity-50"
+                >
+                    <option value="">{crossCopyLoading ? 'Carregando templates...' : '-- Selecione --'}</option>
+                    {crossCopyTemplates.map(t => (
+                        <option key={t.id} value={t.id}>{t.dre_nome}</option>
+                    ))}
+                </select>
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-gray-300">3. Novo Nome do Template</label>
+                <input
+                    type="text"
+                    value={crossCopyNewTemplateName}
+                    onChange={(e) => setCrossCopyNewTemplateName(e.target.value)}
+                    placeholder="Ex: NOVO TEMPLATE DRE"
+                    className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:ring-indigo-500 uppercase"
+                    required
+                />
+            </div>
+
+             <div className="flex justify-end pt-4 space-x-2">
+                <button type="button" onClick={closeCrossCopyModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">Cancelar</button>
+                <button 
+                  type="button" 
+                  onClick={handleCrossCopy} 
+                  disabled={!crossCopySelectedTemplateId || !crossCopyNewTemplateName || crossCopyLoading}
+                  className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {crossCopyLoading && <i className="fas fa-spinner fa-spin"></i>}
+                  Copiar
+                </button>
+            </div>
+        </div>
+      </Modal>
+
       
       <Modal isOpen={isViewModalOpen} onClose={closeViewModal} title={`Visualização: ${templateForAction?.dre_nome || ''}`} size="4xl">
          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
